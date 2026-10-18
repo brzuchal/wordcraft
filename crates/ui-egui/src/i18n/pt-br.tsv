@@ -2057,6 +2057,7 @@
 	Hyphenation zone:	Zona de hifenização:
 	Italian	Italiano
 	Croatian	Croata
+	Indonesian	Indonésio
 	Japanese	Japonês
 	Korean	Coreano
 	Limit consecutive hyphens to:	Limitar hífens consecutivos a:
@@ -2103,6 +2104,16 @@
 	AutoFit Column by Double-Clicking	Autoajustar coluna com clique duplo
 	Region:	Região:
 	Automatic ({region})	Automático ({region})
+	Odd Banded Rows	Linhas listradas ímpares
+	Even Banded Rows	Linhas listradas pares
+	Odd Banded Columns	Colunas listradas ímpares
+	Even Banded Columns	Colunas listradas pares
+	Top Left Cell	Célula superior esquerda
+	Top Right Cell	Célula superior direita
+	Bottom Left Cell	Célula inferior esquerda
+	Bottom Right Cell	Célula inferior direita
+	Inside Horizontal Border	Borda horizontal interna
+	Inside Vertical Border	Borda vertical interna
 	Text of the nearest paragraph with a given style (running headers)	Texto do parágrafo mais próximo com um determinado estilo (cabeçalhos dinâmicos)
 	Style name:	Nome do estilo:
 # Mail merge: filter and sort recipients (#778)
@@ -2235,3 +2246,15 @@
 # Reading Mode column widths (#1040)
 	Narrow	Estreita
 	Medium	Média
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Mesclar células antes de dividir
+	Table size	Tamanho da tabela
+	AutoFit behavior	Comportamento de autoajuste
+	Initial column width:	Largura inicial da coluna:
+	AutoFit to contents	Autoajustar ao conteúdo
+	AutoFit to window	Autoajustar à janela
+	Separate text at	Separar texto em
+	Commas	Vírgulas
+	Other:	Outro:
+	The number must be between 1 and {max}.	O número deve estar entre 1 e {max}.
+	The measurement must be between {min} and {max}.	A medida deve estar entre {min} e {max}.

@@ -2492,6 +2492,7 @@
 # Strings added on main after this catalog was drafted (merge of main)
 	Column width	Độ rộng cột
 	Croatian	Tiếng Croatia
+	Indonesian	Tiếng Indonesia
 	Edit Document	Sửa tài liệu
 	Envelope #10	Phong bì số 10
 	Envelope DL	Phong bì DL
@@ -2636,6 +2637,17 @@
 # Missing dictionary on the status bar (#1441)
 	No spelling dictionary for {language} is installed, so it isn't checked. WordCraft looks for the Hunspell dictionary {name} in the WORDCRAFT_DICTIONARIES folder and in the usual system locations.	Chưa cài từ điển chính tả cho {language}, nên ngôn ngữ này không được kiểm tra. WordCraft tìm từ điển Hunspell {name} trong thư mục WORDCRAFT_DICTIONARIES và ở các vị trí thông thường của hệ thống.
 	{language} (no dictionary)	{language} (không có từ điển)
+# Table style parts in the Modify Table Style dialog (#714)
+	Odd Banded Rows	Hàng xen kẽ lẻ
+	Even Banded Rows	Hàng xen kẽ chẵn
+	Odd Banded Columns	Cột xen kẽ lẻ
+	Even Banded Columns	Cột xen kẽ chẵn
+	Top Left Cell	Ô trên cùng bên trái
+	Top Right Cell	Ô trên cùng bên phải
+	Bottom Left Cell	Ô dưới cùng bên trái
+	Bottom Right Cell	Ô dưới cùng bên phải
+	Inside Horizontal Border	Viền ngang bên trong
+	Inside Vertical Border	Viền dọc bên trong
 # Load system installed fonts on the web (#1390)
 	Load System Installed Fonts…	Tải phông chữ đã cài trên hệ thống…
 	All system fonts are already available.	Tất cả phông chữ hệ thống đã có sẵn.
@@ -2661,3 +2673,15 @@ template	Letter	Thư
 # Reading Mode column widths (#1040)
 	Narrow	Hẹp
 	Medium	Trung bình
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Gộp ô trước khi tách
+	Table size	Kích thước bảng
+	AutoFit behavior	Tự khớp
+	Initial column width:	Độ rộng cột ban đầu:
+	AutoFit to contents	Tự khớp nội dung
+	AutoFit to window	Tự khớp cửa sổ
+	Separate text at	Tách văn bản tại
+	Commas	Dấu phẩy
+	Other:	Khác:
+	The number must be between 1 and {max}.	Số phải nằm trong khoảng từ 1 đến {max}.
+	The measurement must be between {min} and {max}.	Số đo phải nằm trong khoảng từ {min} đến {max}.

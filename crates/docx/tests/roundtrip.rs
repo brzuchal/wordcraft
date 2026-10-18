@@ -286,7 +286,7 @@ fn tables_with_merges_round_trip() {
     {
         let c = &mut t.rows[1].cells[0];
         c.props.shading = Some(Rgb(0xFF, 0, 0));
-        c.props.valign = VAlign::Bottom;
+        c.props.valign = Some(VAlign::Bottom);
         c.props.text_direction = TextDirection::Up;
         c.props.no_wrap = true;
         c.props.margins = Some([2.0, 3.0, 4.0, 5.0]);
@@ -554,6 +554,49 @@ fn table_style_formatting_round_trips() {
     assert_eq!(got.table.as_ref(), Some(&parts));
 }
 
+/// #714: every table style part (ECMA-376 §17.7.6 `w:tblStylePr` types) keeps its run
+/// formatting, cell shading, cell borders and horizontal and vertical alignment through a save.
+#[test]
+fn every_table_style_part_round_trips() {
+    use wordcraft_doc::styles::{PartFormat, TablePart};
+    let mut d = doc_with(vec![Paragraph::with_text("x", CharProps::default())]);
+    let mut st = Style { id: "Parts".into(), name: "Parts".into(), kind: StyleKind::Table, based_on: Some("TableGrid".into()), ..Default::default() };
+    let aligns = [Align::Left, Align::Center, Align::Right];
+    let valigns = [VAlign::Top, VAlign::Center, VAlign::Bottom];
+    for (i, part) in TablePart::ALL.into_iter().enumerate() {
+        let n = i as u8;
+        let f = PartFormat {
+            chr: CharProps {
+                bold: Some(i % 2 == 0),
+                italic: Some(i % 3 == 0),
+                underline: (i % 4 == 0).then_some(Underline::Single),
+                size: Some(8.0 + i as f32),
+                font: Some(format!("Face {i}")),
+                color: Some(TextColor::Rgb(Rgb(n, 0x20, 0x40))),
+                ..Default::default()
+            },
+            fill: Some(Rgb(0x10 + n, 0x80, 0xF0 - n)),
+            borders: Some(Borders {
+                top: Some(Border { style: BorderStyle::Double, width: 1.5, color: Some(Rgb(n, 0, 0)), space: 0.0 }),
+                bottom: Some(Border::single(0.5 + i as f32 / 4.0)),
+                left: Some(Border { style: BorderStyle::None, width: 0.0, color: None, space: 0.0 }),
+                inside_v: (i % 2 == 1).then(|| Border::single(0.25)),
+                ..Default::default()
+            }),
+            align: aligns.get(i % 3).copied(),
+            v_align: valigns.get(i % 3).copied(),
+        };
+        st.set_table_part(part, f);
+    }
+    d.styles.upsert(st.clone());
+    let r = rt(&d);
+    let got = r.styles.get("Parts").unwrap();
+    for part in TablePart::ALL {
+        assert_eq!(got.table_part(part), st.table_part(part), "{}", part.ooxml());
+    }
+    assert_eq!(got.table, st.table);
+}
+
 #[test]
 fn notes_round_trip() {
     let mut d = Document::new();
@@ -662,6 +705,32 @@ fn note_never_references_itself() {
     let got = paras(&r)[0];
     let Some(InlineObject::NoteRef { id, .. }) = got.objects.first() else { panic!("{:?}", got.objects) };
     assert_eq!(part_text(&r, Some(*id)).trim(), "The note.");
+}
+
+/// A note with a custom mark keeps it in the note's own text: a plain run with the mark, not the
+/// `w:footnoteRef` / `w:endnoteRef` placeholder that Word replaces by the automatic number.
+#[test]
+fn custom_note_mark_stays_in_the_note() {
+    let mut d = Document::new();
+    let f = d.add_part(PartKind::Footnote, Vec::new());
+    let e = d.add_part(PartKind::Endnote, Vec::new());
+    for (id, kind) in [(f, NoteKind::Footnote), (e, NoteKind::Endnote)] {
+        let mut note = Paragraph::with_text(" The note.", CharProps::default());
+        note.insert_object(0, InlineObject::NoteRef { kind, id, custom: "*".into() }, &CharProps::default()).unwrap();
+        d.parts.get_mut(&id).unwrap().blocks = vec![para_block(note)];
+    }
+    let mut p = Paragraph::with_text("Text", CharProps::default());
+    p.insert_object(4, InlineObject::NoteRef { kind: NoteKind::Footnote, id: f, custom: "*".into() }, &CharProps::default()).unwrap();
+    let end = p.len();
+    p.insert_object(end, InlineObject::NoteRef { kind: NoteKind::Endnote, id: e, custom: "*".into() }, &CharProps::default()).unwrap();
+    d.body = vec![para_block(p)];
+
+    let bytes = wordcraft_docx::write(&d).expect("write");
+    for (file, mark) in [("word/footnotes.xml", "<w:footnoteRef/>"), ("word/endnotes.xml", "<w:endnoteRef/>")] {
+        let xml = part_xml(&bytes, file);
+        assert!(!xml.contains(mark), "{file}: the custom mark became an automatic number: {xml}");
+        assert!(xml.contains(r#"<w:t xml:space="preserve">*</w:t>"#), "{file}: {xml}");
+    }
 }
 
 /// A note read from a Word file starts with its own number (a reference to itself, from the

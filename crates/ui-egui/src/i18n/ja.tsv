@@ -2045,6 +2045,7 @@
 	Hyphenation zone:	ハイフネーション領域:
 	Italian	イタリア語
 	Croatian	クロアチア語
+	Indonesian	インドネシア語
 	Japanese	日本語
 	Korean	韓国語
 	Limit consecutive hyphens to:	連続するハイフンの上限:
@@ -2091,6 +2092,16 @@
 	AutoFit Column by Double-Clicking	ダブルクリックで列の幅を自動調整
 	Region:	地域:
 	Automatic ({region})	自動 ({region})
+	Odd Banded Rows	奇数の縞模様（行）
+	Even Banded Rows	偶数の縞模様（行）
+	Odd Banded Columns	奇数の縞模様（列）
+	Even Banded Columns	偶数の縞模様（列）
+	Top Left Cell	左上のセル
+	Top Right Cell	右上のセル
+	Bottom Left Cell	左下のセル
+	Bottom Right Cell	右下のセル
+	Inside Horizontal Border	内側の横罫線
+	Inside Vertical Border	内側の縦罫線
 	Text of the nearest paragraph with a given style (running headers)	指定したスタイルを持つ最も近い段落の文字列 (柱)
 	Style name:	スタイル名:
 # Mail merge: filter and sort recipients (#778)
@@ -2223,3 +2234,15 @@
 # Reading Mode column widths (#1040)
 	Narrow	狭い
 	Medium	中
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	分割する前にセルを結合する
+	Table size	表のサイズ
+	AutoFit behavior	自動調整
+	Initial column width:	列の幅の初期値:
+	AutoFit to contents	文字列の幅に合わせる
+	AutoFit to window	ウィンドウ幅に合わせる
+	Separate text at	文字列の区切り
+	Commas	カンマ
+	Other:	その他:
+	The number must be between 1 and {max}.	1 から {max} までの数値を指定してください。
+	The measurement must be between {min} and {max}.	{min} から {max} までの値を指定してください。

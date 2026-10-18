@@ -2026,6 +2026,7 @@
 	Hyphenation zone:	Silbentrennzone:
 	Italian	Italienisch
 	Croatian	Kroatisch
+	Indonesian	Indonesisch
 	Japanese	Japanisch
 	Korean	Koreanisch
 	Limit consecutive hyphens to:	Aufeinanderfolgende Trennstriche begrenzen auf:
@@ -2082,6 +2083,16 @@
 	Hindi	Hindi
 	Context	Kontext
 	System	System
+	Odd Banded Rows	Ungerade gestreifte Zeilen
+	Even Banded Rows	Gerade gestreifte Zeilen
+	Odd Banded Columns	Ungerade gestreifte Spalten
+	Even Banded Columns	Gerade gestreifte Spalten
+	Top Left Cell	Zelle oben links
+	Top Right Cell	Zelle oben rechts
+	Bottom Left Cell	Zelle unten links
+	Bottom Right Cell	Zelle unten rechts
+	Inside Horizontal Border	Innere horizontale Rahmenlinie
+	Inside Vertical Border	Innere vertikale Rahmenlinie
 # Mail merge: filter and sort recipients (#778)
 	Filter Recipients	Empfänger filtern
 	Sort Recipients	Empfänger sortieren
@@ -2222,3 +2233,15 @@
 # Reading Mode column widths (#1040)
 	Narrow	Schmal
 	Medium	Mittel
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Zellen vor dem Teilen verbinden
+	Table size	Tabellengröße
+	AutoFit behavior	Automatische Anpassung
+	Initial column width:	Anfangsspaltenbreite:
+	AutoFit to contents	An Inhalt anpassen
+	AutoFit to window	An Fenster anpassen
+	Separate text at	Text trennen bei
+	Commas	Kommas
+	Other:	Andere:
+	The number must be between 1 and {max}.	Die Zahl muss zwischen 1 und {max} liegen.
+	The measurement must be between {min} and {max}.	Das Maß muss zwischen {min} und {max} liegen.

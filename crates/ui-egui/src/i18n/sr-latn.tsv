@@ -2055,6 +2055,7 @@
 	Hyphenation zone:	Zona deljenja reči:
 	Italian	Italijanski
 	Croatian	Hrvatski
+	Indonesian	Indonežanski
 	Japanese	Japanski
 	Korean	Korejski
 	Limit consecutive hyphens to:	Najviše uzastopnih crtica:
@@ -2101,6 +2102,16 @@
 	AutoFit Column by Double-Clicking	Automatsko uklapanje kolone dvostrukim klikom
 	Region:	Region:
 	Automatic ({region})	Automatski ({region})
+	Odd Banded Rows	Neparni trakasti redovi
+	Even Banded Rows	Parni trakasti redovi
+	Odd Banded Columns	Neparne trakaste kolone
+	Even Banded Columns	Parne trakaste kolone
+	Top Left Cell	Gornja leva ćelija
+	Top Right Cell	Gornja desna ćelija
+	Bottom Left Cell	Donja leva ćelija
+	Bottom Right Cell	Donja desna ćelija
+	Inside Horizontal Border	Unutrašnja horizontalna ivica
+	Inside Vertical Border	Unutrašnja vertikalna ivica
 	Text of the nearest paragraph with a given style (running headers)	Tekst najbližeg pasusa sa zadatim stilom (tekuća zaglavlja)
 	Style name:	Naziv stila:
 # Mail merge: filter and sort recipients (#778)
@@ -2233,3 +2244,15 @@
 # Reading Mode column widths (#1040)
 	Narrow	Uska
 	Medium	Srednja
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Spoji ćelije pre deljenja
+	Table size	Veličina tabele
+	AutoFit behavior	Automatsko uklapanje
+	Initial column width:	Početna širina kolone:
+	AutoFit to contents	Automatski uklopi prema sadržaju
+	AutoFit to window	Automatski uklopi prema prozoru
+	Separate text at	Razdvoji tekst na
+	Commas	Zarezi
+	Other:	Drugo:
+	The number must be between 1 and {max}.	Broj mora biti između 1 i {max}.
+	The measurement must be between {min} and {max}.	Mera mora biti između {min} i {max}.

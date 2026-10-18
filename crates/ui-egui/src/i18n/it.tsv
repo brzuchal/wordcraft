@@ -2061,6 +2061,7 @@
 	Hyphenation zone:	Area di sillabazione:
 	Italian	Italiano
 	Croatian	Croato
+	Indonesian	Indonesiano
 	Japanese	Giapponese
 	Korean	Coreano
 	Limit consecutive hyphens to:	Limita trattini consecutivi a:
@@ -2458,6 +2459,16 @@ preview	Title	Esempio
 	Hindi	Hindi
 	Context	Contesto
 	System	Sistema
+	Odd Banded Rows	Righe alternate dispari
+	Even Banded Rows	Righe alternate pari
+	Odd Banded Columns	Colonne alternate dispari
+	Even Banded Columns	Colonne alternate pari
+	Top Left Cell	Cella in alto a sinistra
+	Top Right Cell	Cella in alto a destra
+	Bottom Left Cell	Cella in basso a sinistra
+	Bottom Right Cell	Cella in basso a destra
+	Inside Horizontal Border	Bordo orizzontale interno
+	Inside Vertical Border	Bordo verticale interno
 # Mail merge: filter and sort recipients (#778)
 	Filter Recipients	Filtra destinatari
 	Sort Recipients	Ordina destinatari
@@ -2631,3 +2642,15 @@ preview	Title	Esempio
 # Reading Mode column widths (#1040)
 	Narrow	Stretta
 	Medium	Media
+# Split Cells and Convert Text to Table (#2592)
+	Merge cells before split	Unisci le celle prima di dividere
+	Table size	Dimensioni tabella
+	AutoFit behavior	Adattamento automatico
+	Initial column width:	Larghezza colonna iniziale:
+	AutoFit to contents	Adatta al contenuto
+	AutoFit to window	Adatta alla finestra
+	Separate text at	Separa il testo in corrispondenza di
+	Commas	Virgole
+	Other:	Altro:
+	The number must be between 1 and {max}.	Il numero deve essere compreso tra 1 e {max}.
+	The measurement must be between {min} and {max}.	La misura deve essere compresa tra {min} e {max}.
