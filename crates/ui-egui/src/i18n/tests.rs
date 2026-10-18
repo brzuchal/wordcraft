@@ -989,10 +989,16 @@ fn polish_covers_every_key_of_every_other_catalog() {
     let polish = keys(lang("pl").0.source);
     // Italian and Hungarian still carry "Style: APA", which the interface no longer shows;
     // Hungarian and Bulgarian also name the citation styles, and Bulgarian has a few one-line
+    // pieces of gallery labels. Polish matches every other catalog, including the built-in style
+    // names, citation styles and equation gallery.
     for other in Lang::all().filter(|l| *l != Lang::EN && !matches!(l.code(), "pl" | "it" | "hu" | "bg" | "vi" | "sv" | "hr")) {
         let mut missing: Vec<String> = keys(other.0.source).difference(&polish).cloned().collect();
         missing.sort();
         assert!(missing.is_empty(), "pl lacks {}'s {missing:?}", other.code());
+    }
+    for code in ["it", "hu"] {
+        let missing: Vec<String> = keys(lang(code).0.source).difference(&polish).cloned().collect();
+        assert_eq!(missing, ["Style: APA"], "pl vs {code}");
     }
     let pl = lang("pl");
     assert_eq!(tr(pl, "File"), "Plik");
@@ -1002,6 +1008,8 @@ fn polish_covers_every_key_of_every_other_catalog() {
     assert_eq!(tr(pl, "Save"), "Zapisz");
     assert_eq!(tr(pl, "Spelling & Grammar"), "Pisownia i gramatyka");
     assert_eq!(tr(pl, "Polish"), "Polski");
+    assert_eq!(tr(pl, "GOST (name sort)"), "GOST (sortowanie według nazwiska)");
+    assert_eq!(tr(pl, "ISO 690 (author-date)"), "ISO 690 (autor–data)");
     assert_eq!(tr(pl, "unknown future label"), "unknown future label");
     assert_eq!(fmt(tr(pl, "Exported {path}"), &[("path", "draft-{words}.docx")]), "Wyeksportowano: draft-{words}.docx");
     assert_eq!(fmt(tr(pl, "Page {page} of {pages}"), &[("page", "3"), ("pages", "9")]), "Strona 3 z 9");
@@ -1065,6 +1073,33 @@ fn a_polish_interface_writes_new_documents_in_polish() {
 }
 
 #[test]
+fn a_czech_interface_writes_new_documents_and_plain_text_in_czech() {
+    let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
+    let ctx = egui::Context::default();
+    let frame = |app: &mut crate::WordApp| ctx.run_ui(egui::RawInput::default(), |ui| app.logic(ui.ctx())).drop_without_applying_deltas();
+    app.run("ui.language", serde_json::json!({"value": "cs"})).unwrap();
+    frame(&mut app);
+    assert_eq!(app.session.editing_lang.as_deref(), Some("cs-CZ"));
+    assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("cs-CZ"));
+    assert!(!app.session.dirty);
+    app.run("file.new", serde_json::json!({})).unwrap();
+    assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("cs-CZ"));
+    set_current(lang("cs"));
+    assert_eq!(crate::ribbon::caret_language(&app), "Čeština");
+    set_current(Lang::EN);
+    assert_eq!(crate::ribbon::caret_language(&app), "Czech");
+    for path in ["poznamka.txt", "poznamka.md"] {
+        // Base64 of our synthetic text, "Město"; file.open takes bytes without a dialog.
+        app.session.run("file.open", &serde_json::json!({"path": path, "data": "TcSbc3Rv"})).unwrap();
+        assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("cs-CZ"), "{path}");
+    }
+    app.run("ui.language", serde_json::json!({"value": "en"})).unwrap();
+    frame(&mut app);
+    assert_eq!(app.session.editing_lang, None);
+    assert_eq!(app.session.doc.styles.default_chr.lang.as_deref(), Some("cs-CZ"), "opened content keeps its language");
+}
+
+#[test]
 fn an_italian_interface_writes_new_documents_in_italian() {
     let mut app = crate::WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Default::default());
     let ctx = egui::Context::default();
@@ -1087,7 +1122,7 @@ fn an_italian_interface_writes_new_documents_in_italian() {
 #[test]
 fn the_editing_languages_are_the_ones_wordcraft_can_proof() {
     let with: Vec<(&str, &str)> = Lang::all().filter_map(|l| l.editing_lang().map(|e| (l.code(), e))).collect();
-    assert_eq!(with, [("pt-br", "pt-BR"), ("pl", "pl-PL"), ("tr", "tr-TR"), ("it", "it-IT")]);
+    assert_eq!(with, [("pt-br", "pt-BR"), ("pl", "pl-PL"), ("cs", "cs-CZ"), ("tr", "tr-TR"), ("it", "it-IT")]);
 }
 
 #[test]
