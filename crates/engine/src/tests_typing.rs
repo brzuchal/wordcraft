@@ -52,7 +52,17 @@ fn typed(keys: &str) -> Session {
 #[test]
 fn sample_text_formulas_expand_on_enter() {
     for name in ["rand", "lorem"] {
-        for (args, paragraphs, sentences) in [("", 5, 3), ("2", 2, 3), ("2,4", 2, 4), ("1,1", 1, 1), ("200,1", 200, 1), ("1,200", 1, 200)] {
+        for (args, paragraphs, sentences) in [
+            ("", 5, 3),
+            ("2", 2, 3),
+            (" 2 ", 2, 3),
+            ("2,4", 2, 4),
+            ("2, 4", 2, 4),
+            (" 2 , 4 ", 2, 4),
+            ("1,1", 1, 1),
+            ("200,1", 200, 1),
+            ("1,200", 1, 200),
+        ] {
             let mut s = typed(&format!("={name}({args})"));
             let depth = s.undo_depth();
             typ(&mut s, "\n");
@@ -357,8 +367,8 @@ fn web_addresses_become_links() {
 
 #[test]
 fn dashes() {
-    let s = typed("a -- b and c - d and e--f ");
-    assert_eq!(s.doc.plain_text(StoryRef::Body), "A – b and c – d and e—f ");
+    let s = typed("a -- b and c - d and e--f and café--g ");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "A – b and c – d and e—f and café—g ");
 }
 
 #[test]
@@ -720,6 +730,34 @@ fn alt_shift_left_and_right_promote_and_demote_headings_and_list_items() {
 }
 
 #[test]
+fn down_and_up_from_a_line_start_beside_a_table_go_into_it() {
+    let mut s = typed("Intro line\n");
+    run(&mut s, "insert.table", json!({"rows": 2, "cols": 2}));
+    let (table, _, _) = s.sel.focus.path.cell().unwrap();
+    typ(&mut s, "a");
+    let cell = |r: u32, c: u32| {
+        let mut p = table.0.clone();
+        p.extend([r, c, 0]);
+        wordcraft_doc::Path(p)
+    };
+    // From the start of the line above, left of the cells' text: the first cell, then the one
+    // below, not the paragraph after the table.
+    run(&mut s, "caret.docStart", json!({}));
+    run(&mut s, "caret.down", json!({}));
+    assert_eq!(s.sel.focus.path, cell(0, 0));
+    run(&mut s, "caret.down", json!({}));
+    assert_eq!(s.sel.focus.path, cell(1, 0), "then the cell below");
+    // Up from the start of the paragraph after it: the last row's first cell.
+    run(&mut s, "caret.docEnd", json!({}));
+    run(&mut s, "caret.up", json!({}));
+    assert_eq!(s.sel.focus.path, cell(1, 0));
+    // Shift+Down from the line above takes the first row, not the whole table.
+    run(&mut s, "caret.docStart", json!({}));
+    run(&mut s, "caret.down", json!({"extend": true}));
+    assert_eq!(s.sel.focus.path, cell(0, 1));
+}
+
+#[test]
 fn alt_x_toggles_between_a_character_and_its_code() {
     if !cfg!(target_os = "macos") {
         assert_eq!(s().registry.by_shortcut("Alt+X").map(|c| c.id), Some("text.toggleUnicode"));
@@ -743,6 +781,102 @@ fn alt_x_toggles_between_a_character_and_its_code() {
 }
 
 #[test]
+fn alt_numpad_codes_map_like_word_on_windows() {
+    use crate::cmd::text::{alt_code_char, oem_code_page};
+    let c = |code| alt_code_char(code, 1252, 437);
+    // Leading 0: Windows-1252.
+    assert_eq!(c("0233"), Some('é'));
+    assert_eq!(c("0128"), Some('€'));
+    assert_eq!(c("0150"), Some('–'));
+    assert_eq!(c("065"), Some('A'));
+    assert_eq!(c("0032"), Some(' '));
+    assert_eq!(c("0255"), Some('ÿ'));
+    // No leading 0: the OEM code page (437 here, 850 in Western Europe).
+    assert_eq!(c("233"), Some('Θ'));
+    // The issue said 233 → é in 850; the CP850 mapping file has Ú at 0xE9 (é is 130 in both).
+    assert_eq!(alt_code_char("233", 1252, 850), Some('Ú'));
+    assert_eq!(alt_code_char("130", 1252, 850), Some('é'));
+    assert_eq!(c("130"), Some('é'));
+    assert_eq!(alt_code_char("155", 1252, 850), Some('ø'));
+    assert_eq!(c("155"), Some('¢'));
+    assert_eq!(c("65"), Some('A'));
+    assert_eq!(c("1"), Some('☺'));
+    assert_eq!(c("7"), Some('•'));
+    assert_eq!(c("127"), Some('⌂'));
+    assert_eq!(c("176"), Some('░'));
+    // Above 255: the Unicode character with that decimal value.
+    assert_eq!(c("8364"), Some('€'));
+    assert_eq!(c("09733"), Some('★'));
+    assert_eq!(c("128512"), Some('😀'));
+    // Nothing for junk, 0, control characters, surrogates or values past Unicode.
+    for bad in ["", "0", "000", "0009", "0013", "0127", "0129", "x1", "-5", "55296", "1114112", "99999999999999999999", "4294967361"] {
+        assert_eq!(c(bad), None, "{bad:?}");
+    }
+    assert_eq!(oem_code_page(None), 437);
+    assert_eq!(oem_code_page(Some("en-US")), 437);
+    assert_eq!(oem_code_page(Some("en_GB.UTF-8")), 850);
+    assert_eq!(oem_code_page(Some("fr-FR")), 850);
+    assert_eq!(oem_code_page(Some("de")), 850);
+    assert_eq!(oem_code_page(Some("ru-RU")), 437, "only 437/850 without the shell's code pages");
+}
+
+#[test]
+fn alt_numpad_codes_follow_the_system_code_pages() {
+    use crate::cmd::text::{alt_code_char, windows_code_pages};
+    // Polish (1250/852): Alt+0185 and Alt+165 are both ą, not ¹ / Ñ.
+    assert_eq!(alt_code_char("0185", 1250, 852), Some('ą'));
+    assert_eq!(alt_code_char("165", 1250, 852), Some('ą'));
+    assert_eq!(alt_code_char("0185", 1252, 437), Some('¹'));
+    // Russian (1251/866), Greek (1253/737), Turkish (1254/857).
+    assert_eq!(alt_code_char("0207", 1251, 866), Some('П'));
+    assert_eq!(alt_code_char("143", 1251, 866), Some('П'));
+    assert_eq!(alt_code_char("0193", 1253, 737), Some('Α'));
+    assert_eq!(alt_code_char("128", 1253, 737), Some('Α'));
+    assert_eq!(alt_code_char("0253", 1254, 857), Some('ı'));
+    assert_eq!(alt_code_char("141", 1254, 857), Some('ı'));
+    // Above 255 the code page doesn't matter.
+    assert_eq!(alt_code_char("8364", 1251, 866), Some('€'));
+    // A byte the code page leaves unassigned types nothing.
+    assert_eq!(alt_code_char("213", 1254, 857), None);
+    assert_eq!(alt_code_char("0219", 874, 437), None);
+    assert_eq!(windows_code_pages(None), (1252, 437));
+    assert_eq!(windows_code_pages(Some("en-US")), (1252, 437));
+    assert_eq!(windows_code_pages(Some("de-DE")), (1252, 850));
+    assert_eq!(windows_code_pages(Some("pl-PL")), (1250, 852));
+    assert_eq!(windows_code_pages(Some("sr-Latn-RS")), (1250, 852));
+    assert_eq!(windows_code_pages(Some("ru_RU.UTF-8")), (1251, 866));
+    assert_eq!(windows_code_pages(Some("el-GR")), (1253, 737));
+    assert_eq!(windows_code_pages(Some("tr-TR")), (1254, 857));
+    assert_eq!(windows_code_pages(Some("ja-JP")), (1252, 437));
+}
+
+#[test]
+fn alt_numpad_code_types_one_character() {
+    // `texts` lowercases; the capitals matter here.
+    let raw = |s: &Session| paras(s).into_iter().map(|p| p.0).collect::<Vec<_>>();
+    let mut s = s();
+    run(&mut s, "text.insert", json!({"text": "caf"}));
+    run(&mut s, "text.typeCode", json!({"code": "0233"}));
+    run(&mut s, "text.insert", json!({"text": " "}));
+    run(&mut s, "text.typeCode", json!({"code": "233", "oem": 437}));
+    run(&mut s, "text.insert", json!({"text": " "}));
+    run(&mut s, "text.typeCode", json!({"code": "155", "oem": 850}));
+    assert_eq!(raw(&s), ["Café Θ ø"]);
+    run(&mut s, "edit.undo", json!({}));
+    assert_eq!(raw(&s), ["Café Θ "], "one undo step per code");
+    assert!(s.run("text.typeCode", &json!({"code": "0"})).is_err());
+    assert!(s.run("text.typeCode", &json!({"code": "65", "oem": 855})).is_err());
+    assert!(s.run("text.typeCode", &json!({"code": "065", "ansi": 932})).is_err());
+    assert!(s.run("text.typeCode", &json!({"code": "065", "ansi": 70000})).is_err());
+    assert_eq!(raw(&s), ["Café Θ "]);
+    // The system's code pages: Polish Alt+0185 and Alt+165 both type ą.
+    run(&mut s, "text.typeCode", json!({"code": "0185", "ansi": 1250, "oem": 852}));
+    run(&mut s, "text.typeCode", json!({"code": "165", "ansi": 1250, "oem": 852}));
+    run(&mut s, "text.typeCode", json!({"code": "143", "oem": 866}));
+    assert_eq!(raw(&s), ["Café Θ ąąП"]);
+}
+
+#[test]
 fn shift_f5_goes_back_through_the_last_edits() {
     let mut s = typed("One\nTwo\nThree");
     run(&mut s, "caret.docStart", json!({}));
@@ -755,6 +889,29 @@ fn shift_f5_goes_back_through_the_last_edits() {
     assert_eq!(back(), Pos::body(0, 3));
     assert_eq!(back(), Pos::body(2, 5), "then round again");
     assert!(Session::new(wordcraft_doc::Document::new()).run("edit.goBack", &json!({})).is_err(), "nothing edited yet");
+}
+
+#[test]
+fn shift_right_at_the_end_of_a_cell_selects_the_cell_first() {
+    let mut s = s();
+    run(&mut s, "insert.table", json!({"rows": 2, "cols": 2}));
+    let (table, _, _) = s.sel.focus.path.cell().unwrap();
+    typ(&mut s, "ab");
+    run(&mut s, "caret.left", json!({}));
+    let shift_right = |s: &mut Session| {
+        run(s, "caret.right", json!({"extend": true}));
+        s.cell_range().map(|r| (r.rows, r.cols))
+    };
+    assert_eq!(shift_right(&mut s), None, "the letter first");
+    assert_eq!((s.sel.anchor.off, s.sel.focus.off), (1, 2));
+    assert_eq!(shift_right(&mut s), Some(((0, 0), (0, 0))), "then the cell alone");
+    assert_eq!(shift_right(&mut s), Some(((0, 0), (0, 1))), "then the next cell with it");
+    // In an empty cell the first press takes it.
+    let mut empty = table.0.clone();
+    empty.extend([1, 0, 0]);
+    let pos = Pos { story: StoryRef::Body, path: wordcraft_doc::Path(empty), off: 0 };
+    run(&mut s, "caret.set", json!({"pos": pos}));
+    assert_eq!(shift_right(&mut s), Some(((1, 1), (0, 0))));
 }
 
 #[test]
@@ -918,4 +1075,233 @@ fn typing_rtl_letters_into_an_empty_paragraph_makes_it_rtl() {
     }
     let x = doc.layout().caret(&doc.sel.focus).map(|c| c.x).unwrap_or(f32::MAX);
     assert!(x < 300.0, "left-to-right paragraph: caret at {x}");
+}
+
+/// Select All then Delete or Backspace empties the document, tables included (Word, #1198):
+/// whether the text starts with a table or with a paragraph.
+#[test]
+fn select_all_then_delete_removes_tables() {
+    let tables = |s: &Session| s.doc.body.iter().filter(|b| b.as_table().is_some()).count();
+    // With the caret in a table, Select All grows the selection a step at a time (cell, row,
+    // table, document; #1478): press it until the whole document is selected.
+    let select_whole_document = |s: &mut Session| {
+        for _ in 0..6 {
+            let before = s.sel.clone();
+            run(s, "select.all", json!({}));
+            if s.sel == before {
+                break;
+            }
+        }
+    };
+    for key in ["text.delete", "text.backspace"] {
+        let mut s = typed("");
+        run(&mut s, "insert.table", json!({"rows": 2, "cols": 2}));
+        typ(&mut s, "cell");
+        assert_eq!(tables(&s), 1);
+        select_whole_document(&mut s);
+        run(&mut s, key, json!({}));
+        assert_eq!(tables(&s), 0, "{key}: a table at the start of the document goes");
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "", "{key}");
+
+        let mut s = typed("before\n");
+        run(&mut s, "insert.table", json!({"rows": 2, "cols": 2}));
+        typ(&mut s, "cell");
+        assert_eq!(tables(&s), 1);
+        select_whole_document(&mut s);
+        run(&mut s, key, json!({}));
+        assert_eq!(tables(&s), 0, "{key}: a table after text goes");
+        assert_eq!(s.doc.plain_text(StoryRef::Body), "", "{key}");
+    }
+}
+
+/// #898: a click just after a citation at the end of a paragraph puts the caret before the
+/// citation's hidden field end; what is typed there goes after the citation, as in Word, instead
+/// of into its result (Zotero then reports the citation as edited by hand).
+#[test]
+fn typing_after_a_citation_goes_outside_its_field() {
+    use wordcraft_doc::props::CharProps;
+    use wordcraft_doc::{InlineObject, Path};
+    let mut doc = wordcraft_doc::Document::from_text("Cats purr ");
+    let c = CharProps::default();
+    let p = doc.para_mut(StoryRef::Body, &Path::top(0)).unwrap();
+    let start = p.len();
+    p.insert_object(start, InlineObject::FieldStart { instr: "ADDIN ZOTERO_ITEM CSL_CITATION {}".into(), locked: false, dirty: false }, &c).unwrap();
+    let n = p.insert_text(p.len(), "(Smith 2020)", &c).unwrap();
+    p.insert_object(start + 3 + n, InlineObject::FieldEnd, &c).unwrap();
+    let mut s = Session::new(doc);
+    let end = Pos::body(0, s.doc.para(StoryRef::Body, &Path::top(0)).unwrap().len());
+    let at = s.layout().caret(&end).unwrap();
+    let hit = s.layout().hit(at.page, at.x + 20.0, at.top + at.height / 2.0, StoryRef::Body).unwrap();
+    s.sel = crate::Selection::caret(hit);
+    typ(&mut s, ". Dogs bark.");
+    assert_eq!(s.doc.plain_text(StoryRef::Body), "Cats purr (Smith 2020). Dogs bark.");
+    let f = s.doc.field_ranges(StoryRef::Body);
+    assert_eq!(f.len(), 1);
+    let inside = Pos { off: f[0].start.off + wordcraft_doc::para::OBJ.len_utf8(), ..f[0].start.clone() };
+    assert_eq!(s.doc.copy_range(&inside, &f[0].end).plain_text(), "(Smith 2020)");
+}
+
+/// Tab in a table typed in right-to-left text (#2634): like Word, a table inserted in a
+/// right-to-left paragraph is a right-to-left table, so its first cell stands at the right and
+/// Tab moves to the cell on the left (the next one in reading order); Shift+Tab comes back. A
+/// table inserted in a left-to-right paragraph is unchanged: Tab moves right.
+#[test]
+fn tab_in_a_table_inserted_in_right_to_left_text_moves_left() {
+    // The caret's cell column and the x of that cell on the page.
+    fn caret_cell_x(s: &mut Session) -> (usize, f32) {
+        let (_, r, c) = s.sel.focus.path.cell().expect("caret in a cell");
+        let x = s
+            .layout()
+            .pages
+            .iter()
+            .flat_map(|p| p.items.iter())
+            .find_map(|it| match it {
+                wordcraft_layout::Placed::Cell { rect, row, cell, covered: false, .. } if *row == r && *cell == c => Some(rect.x),
+                _ => None,
+            })
+            .expect("cell laid out");
+        (c, x)
+    }
+    for (keys, rtl) in [("مرحبا\n", true), ("Hello\n", false)] {
+        let mut s = s();
+        typ(&mut s, keys);
+        run(&mut s, "insert.table", json!({"rows": 1, "cols": 3}));
+        let t = s.doc.body.iter().find_map(|b| b.as_table()).expect("table");
+        assert_eq!(t.props.bidi_visual, rtl, "{keys:?}: the table takes the paragraph's direction");
+        let (c0, x0) = caret_cell_x(&mut s);
+        typ(&mut s, "\t");
+        let (c1, x1) = caret_cell_x(&mut s);
+        assert_eq!((c0, c1), (0, 1), "{keys:?}: Tab goes to the next cell in reading order");
+        assert_eq!(x1 < x0, rtl, "{keys:?}: Tab moves {} ({x0} -> {x1})", if rtl { "left" } else { "right" });
+        run(&mut s, "text.backTab", json!({}));
+        assert_eq!(caret_cell_x(&mut s), (0, x0), "{keys:?}: Shift+Tab comes back");
+    }
+}
+
+/// A .docx of two paragraphs in two sections, as Word writes it: the first section's properties
+/// in the first paragraph's mark (portrait), the last section's in the body (landscape, starting
+/// as `kind`).
+fn two_section_docx(kind: &str) -> Vec<u8> {
+    const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    let files = [
+        (
+            "[Content_Types].xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>"#.to_string(),
+        ),
+        (
+            "_rels/.rels",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#.to_string(),
+        ),
+        (
+            "word/document.xml",
+            format!(
+                r#"<w:document xmlns:w="{W}"><w:body><w:p><w:pPr><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:pPr><w:r><w:t>One.</w:t></w:r></w:p><w:p><w:r><w:t>Two.</w:t></w:r></w:p><w:sectPr><w:type w:val="{kind}"/><w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/></w:sectPr></w:body></w:document>"#
+            ),
+        ),
+    ];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, data) in files {
+        zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(&mut zip, data.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+/// #2127: Backspace just after a section break, or Delete just before it, removes the break, as
+/// in Word: the two paragraphs join, the text before the break takes the following section's
+/// page setup, and Undo brings the break back. Imported breaks and ones made here alike.
+#[test]
+fn backspace_and_delete_remove_a_section_break() {
+    let made_here = || {
+        let mut s = typed("One.Two.");
+        s.sel = crate::Selection::caret(Pos::body(0, 4));
+        run(&mut s, "layout.break", json!({"kind": "nextPage"}));
+        s
+    };
+    for source in ["nextPage", "continuous", "made here"] {
+        for (key, caret) in [("text.backspace", Pos::body(1, 0)), ("text.delete", Pos::body(0, 4))] {
+            let mut s = match source {
+                "made here" => made_here(),
+                kind => Session::new(crate::io::open_bytes("s.docx", &two_section_docx(kind)).unwrap()),
+            };
+            assert_eq!(s.doc.sections().len(), 2, "{source}");
+            assert_eq!(s.doc.plain_text(StoryRef::Body), "One.\nTwo.", "{source}");
+            let after = s.doc.sections().last().map(|(_, sp)| (**sp).clone()).unwrap();
+            s.sel = crate::Selection::caret(caret);
+            run(&mut s, key, json!({}));
+            assert_eq!(s.doc.plain_text(StoryRef::Body), "One.Two.", "{source} {key}");
+            let sections = s.doc.sections();
+            assert_eq!(sections.len(), 1, "{source} {key}: the break is gone");
+            assert_eq!(*sections[0].1, after, "{source} {key}: the following section's setup");
+            run(&mut s, "edit.undo", json!({}));
+            assert_eq!(s.doc.plain_text(StoryRef::Body), "One.\nTwo.", "{source} {key}: undo");
+            assert_eq!(s.doc.sections().len(), 2, "{source} {key}: undo brings the break back");
+        }
+    }
+}
+
+/// A .docx laid out like the one attached to #2127: a continuous section break, with the
+/// document's only header, on the mark of an empty paragraph after "One.", and the last
+/// section (nextPage, no header of its own, so linked to the previous one) in the body.
+/// `then` adds a paragraph after the break; without it the break is on the last paragraph and
+/// the last section has none.
+fn break_on_the_last_paragraph_docx(then: Option<&str>) -> Vec<u8> {
+    const W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const R: &str = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    let then = then.map(|t| format!("<w:p><w:r><w:t>{t}</w:t></w:r></w:p>")).unwrap_or_default();
+    let files = [
+        (
+            "[Content_Types].xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>"#.to_string(),
+        ),
+        (
+            "_rels/.rels",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>"#.to_string(),
+        ),
+        (
+            "word/_rels/document.xml.rels",
+            r#"<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>"#.to_string(),
+        ),
+        ("word/header1.xml", format!(r#"<w:hdr xmlns:w="{W}"><w:p><w:r><w:t>Lab report</w:t></w:r></w:p></w:hdr>"#)),
+        (
+            "word/document.xml",
+            format!(
+                r#"<w:document xmlns:w="{W}" xmlns:r="{R}"><w:body><w:p><w:r><w:t>One.</w:t></w:r></w:p><w:p><w:pPr><w:sectPr><w:headerReference w:type="default" r:id="rId2"/><w:type w:val="continuous"/><w:pgSz w:w="11920" w:h="16850"/><w:pgMar w:top="1320" w:right="1275" w:bottom="280" w:left="1417" w:header="480" w:footer="0" w:gutter="0"/></w:sectPr></w:pPr></w:p>{then}<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="11920" w:h="16850"/><w:pgMar w:top="1320" w:right="1275" w:bottom="280" w:left="1417" w:header="480" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>"#
+            ),
+        ),
+    ];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, data) in files {
+        zip.start_file(name, zip::write::SimpleFileOptions::default()).unwrap();
+        std::io::Write::write_all(&mut zip, data.as_bytes()).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+/// #2127: Delete at the end of the last paragraph removes a section break on its mark too,
+/// though there's no paragraph after it to join. The text takes the last section's setup, and
+/// the header the last section showed by linking to the removed one stays. Removing the break
+/// by joining two paragraphs keeps that header as well. Undo brings the break back.
+#[test]
+fn delete_removes_a_section_break_on_the_last_paragraph() {
+    for then in [None, Some("Two.")] {
+        let mut s = Session::new(crate::io::open_bytes("s.docx", &break_on_the_last_paragraph_docx(then)).unwrap());
+        let sections = s.doc.sections();
+        assert_eq!(sections.len(), 2, "{then:?}");
+        let header = sections[0].1.headers.default;
+        assert!(header.is_some() && sections[1].1.headers.default.is_none(), "{then:?}: the header is on the break's section");
+        let mut after = sections[1].1.clone();
+        after.headers.default = header;
+        s.sel = crate::Selection::caret(Pos::body(1, 0));
+        run(&mut s, "text.delete", json!({}));
+        let text = if then.is_some() { "One.\nTwo." } else { "One.\n" };
+        assert_eq!(s.doc.plain_text(StoryRef::Body), text, "{then:?}");
+        let sections = s.doc.sections();
+        assert_eq!(sections.len(), 1, "{then:?}: the break is gone");
+        assert_eq!(*sections[0].1, after, "{then:?}: the last section's setup, with the header");
+        run(&mut s, "edit.undo", json!({}));
+        let sections = s.doc.sections();
+        assert_eq!(sections.len(), 2, "{then:?}: undo brings the break back");
+        assert_eq!((sections[0].1.headers.default, sections[1].1.headers.default), (header, None), "{then:?}: undo");
+    }
 }

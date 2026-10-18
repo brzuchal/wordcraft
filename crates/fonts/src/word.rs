@@ -29,6 +29,7 @@ fn substitutes(family: &str) -> &'static [&'static str] {
     const SERIF: &[&str] = &["Caladea", "Times New Roman", "Liberation Serif", "Georgia", "Noto Serif", "DejaVu Serif", "Source Serif 4"];
     const MONO: &[&str] = &["Courier New", "Liberation Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "JetBrains Mono"];
     const ARIAL: &[&str] = &["Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
+    const ARIAL_UNICODE: &[&str] = &["Arial", "Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
     const TIMES: &[&str] = &["Liberation Serif", "Times", "Tinos", "Source Serif 4"];
     // Word's symbol fonts (Symbol, Wingdings…) are proprietary: their characters are drawn as their
     // Unicode equivalents (`wordcraft_doc::symbol_fonts`) from these faces or any face that has them.
@@ -38,6 +39,16 @@ fn substitutes(family: &str) -> &'static [&'static str] {
     // headings and screens. Open fonts with full Persian coverage first.
     const NASKH: &[&str] = &["Noto Naskh Arabic", "XB Zar", "XB Niloofar", "Amiri", "Vazirmatn", "Noto Sans Arabic", "DejaVu Sans", "Source Serif 4"];
     const ARABIC_SANS: &[&str] = &["Vazirmatn", "Sahel", "Shabnam", "Samim", "Noto Sans Arabic", "Noto Naskh Arabic", "DejaVu Sans", "Source Sans 3"];
+    // Hebrew document fonts: platform-specific fonts first, then common open source fallbacks.
+    // Windows: Microsoft Office fonts (David, Miriam) are common; Segoe UI is standard.
+    // macOS: Helvetica has good Hebrew support; Geeza Pro is included by default.
+    // Linux: Noto Sans Hebrew is the best option.
+    #[cfg(windows)]
+    const HEBREW: &[&str] = &["Noto Sans Hebrew", "David", "Miriam", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans", "Source Sans 3"];
+    #[cfg(target_os = "macos")]
+    const HEBREW: &[&str] = &["Helvetica", "Noto Sans Hebrew", "Arial", "Tahoma", "Geeza Pro", "DejaVu Sans", "Source Sans 3"];
+    #[cfg(not(any(windows, target_os = "macos")))]
+    const HEBREW: &[&str] = &["Noto Sans Hebrew", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans", "Source Sans 3"];
     // Palatino Linotype / Book Antiqua: macOS ships the same design as "Palatino"; open
     // look-alikes with matching metrics (TeX Gyre Pagella, URW P052 / Palladio) on Linux.
     const PALATINO: &[&str] = &[
@@ -57,6 +68,9 @@ fn substitutes(family: &str) -> &'static [&'static str] {
         "Source Serif 4",
     ];
     let f = family.to_ascii_lowercase();
+    if is_hebrew(&f) {
+        return HEBREW;
+    }
     if is_persian_naskh(&f) {
         return NASKH;
     }
@@ -66,6 +80,7 @@ fn substitutes(family: &str) -> &'static [&'static str] {
     match f.as_str() {
         "palatino linotype" | "book antiqua" | "palatino" => PALATINO,
         "arial" | "helvetica" | "arial nova" => ARIAL,
+        "arial unicode ms" => ARIAL_UNICODE,
         "times new roman" | "times" => TIMES,
         "courier new" | "courier" | "consolas" | "lucida console" | "cascadia code" | "cascadia mono" => MONO,
         "symbol" | "wingdings" | "wingdings 2" | "wingdings 3" | "segoe ui symbol" | "webdings" => SYMBOL,
@@ -181,6 +196,12 @@ fn is_persian_sans(f: &str) -> bool {
     NAMES.contains(&f) || f.starts_with("iransans") || f.starts_with("iranyekan")
 }
 
+/// Hebrew document fonts.
+fn is_hebrew(f: &str) -> bool {
+    const NAMES: &[&str] = &["david", "miriam", "noto sans hebrew", "arial hebrew", "calibri hebrew"];
+    NAMES.contains(&f) || f.contains("hebrew")
+}
+
 fn style_name(bold: bool, italic: bool) -> &'static str {
     match (bold, italic) {
         (false, false) => "Regular",
@@ -208,7 +229,8 @@ pub fn resolve(family: &str, bold: bool, italic: bool) -> Resolved {
             return *r;
         }
     }
-    let base = charset_base_family(family);
+    // Printer-driver Symbol aliases use the same encoding as Symbol.
+    let base = if family.trim().eq_ignore_ascii_case("Symbol (PCL6)") { "Symbol" } else { charset_base_family(family) };
     let (fam, substituted) = if db.has_family(family) {
         (family.to_string(), false)
     } else if base != family && db.has_family(base) {
@@ -307,6 +329,30 @@ mod tests {
     }
 
     #[test]
+    fn pcl6_symbol_resolves_as_symbol() {
+        let actual = resolve("Symbol (PCL6)", false, false);
+        let db = FontDb::global();
+        if db.has_family("Symbol (PCL6)") {
+            assert_eq!(actual.face.id(), db.face("Symbol (PCL6)", "Regular").id());
+            assert!(!actual.substituted);
+            return;
+        }
+        let expected = resolve("Symbol", false, false);
+        assert_eq!(actual.face.id(), expected.face.id());
+        assert_eq!(actual.substituted, expected.substituted);
+    }
+
+    #[test]
+    fn unicode_arial_is_proportional() {
+        for name in ["Arial Unicode MS", "ARIAL UNICODE MS"] {
+            let candidates = substitutes(name);
+            assert_eq!(candidates.first(), Some(&"Arial"));
+            assert_eq!(&candidates[1..], substitutes("Arial"));
+        }
+        assert_eq!(substitutes("Cascadia Code").first(), Some(&"Courier New"));
+    }
+
+    #[test]
     fn symbol_fonts_substitute_symbol_faces() {
         for f in ["Symbol", "Wingdings", "Wingdings 2", "Wingdings 3", "Webdings"] {
             assert!(substitutes(f).contains(&"Noto Sans Symbols 2"), "{f}");
@@ -330,5 +376,18 @@ mod tests {
         // JetBrains Mono ships only Regular here.
         let r = resolve("JetBrains Mono", true, true);
         assert!(r.synth_bold && r.synth_italic);
+    }
+
+    #[test]
+    fn hebrew_fonts_substitute_hebrew_faces() {
+        for f in ["David", "Miriam", "Arial Hebrew", "Calibri Hebrew", "Noto Sans Hebrew"] {
+            assert!(substitutes(f).contains(&"Noto Sans Hebrew"), "{f}");
+            // David is a Windows font; only the Windows list offers it.
+            if cfg!(target_os = "windows") {
+                assert!(substitutes(f).contains(&"David") || f == "David", "{f}");
+            }
+        }
+        // Generic names with "Hebrew" in them also get Hebrew substitutions
+        assert!(substitutes("SomeFont Hebrew").contains(&"Noto Sans Hebrew"));
     }
 }
