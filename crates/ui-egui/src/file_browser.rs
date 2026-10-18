@@ -157,7 +157,7 @@ pub(crate) struct FileBrowser {
 impl FileBrowser {
     pub(crate) fn new(req: FileDialogRequest, after: AfterPick, start: PathBuf, unavailable: bool) -> Self {
         let (name, filters) = match &req {
-            FileDialogRequest::Open { purpose } => {
+            FileDialogRequest::Open { purpose } | FileDialogRequest::OpenMany { purpose } => {
                 (String::new(), open_filters(purpose).iter().map(|(l, e)| ((*l).to_string(), e.iter().map(|x| (*x).to_string()).collect())).collect())
             }
             FileDialogRequest::Save { name } => {
@@ -219,7 +219,7 @@ impl FileBrowser {
             return Step::Stay;
         }
         match self.req {
-            FileDialogRequest::Open { .. } => {
+            FileDialogRequest::Open { .. } | FileDialogRequest::OpenMany { .. } => {
                 if path.is_file() {
                     return Step::Pick(path);
                 }
@@ -252,14 +252,14 @@ impl FileBrowser {
 
     fn title(&self) -> &'static str {
         match self.req {
-            FileDialogRequest::Open { .. } => "Open",
+            FileDialogRequest::Open { .. } | FileDialogRequest::OpenMany { .. } => "Open",
             FileDialogRequest::Save { .. } => "Save As",
         }
     }
 
     fn ok_label(&self) -> &'static str {
         match self.req {
-            FileDialogRequest::Open { .. } => "Open",
+            FileDialogRequest::Open { .. } | FileDialogRequest::OpenMany { .. } => "Open",
             FileDialogRequest::Save { .. } => "Save",
         }
     }
@@ -290,7 +290,10 @@ impl WordApp {
         let (req, after) = match purpose {
             "picture" => (FileDialogRequest::Open { purpose: "picture".into() }, AfterPick::Picture),
             "recipients" => (FileDialogRequest::Open { purpose: "recipients".into() }, AfterPick::Recipients),
-            "save" => (FileDialogRequest::Save { name: self.default_save_name() }, AfterPick::SaveAs(crate::file_dialogs::AfterSave::Nothing)),
+            "save" => (
+                FileDialogRequest::Save { name: self.default_save_name() },
+                AfterPick::SaveAs { after: crate::file_dialogs::AfterSave::Nothing, document: self.session.document_id() },
+            ),
             _ => (FileDialogRequest::Open { purpose: "document".into() }, AfterPick::OpenDocument),
         };
         self.show_file_browser(req, after, false);

@@ -6,21 +6,27 @@ use serde_json::json;
 use crate::theme::{APP_COLOR, Tokens, medium, regular, semibold};
 use crate::{WordApp, icons};
 
+/// WordCraft's icon for each page of the File page's column, each its own (#1714).
+const PAGE_ICONS: [(&str, &str); 11] = [
+    ("home", "homeFolder"),
+    ("new", "blankPage"),
+    ("open", "open"),
+    ("info", "info"),
+    ("recover", "recover"),
+    ("save", "save"),
+    ("saveAs", "saveAs"),
+    ("print", "print"),
+    ("export", "export"),
+    ("close", "close"),
+    ("options", "options"),
+];
+
 /// WordCraft's icon for an entry of the File page's column; `None` is Back.
 fn nav_icon(key: Option<&str>) -> &'static str {
     match key {
         None => "chevronLeft",
-        Some("home") => "home",
-        Some("new") => "blankPage",
-        Some("open") => "open",
-        Some("save" | "saveAs") => "save",
-        Some("recover") => "undo",
-        Some("print") => "print",
-        Some("export") => "export",
-        Some("close") => "close",
-        Some("options") => "options",
         Some("discord") => "comment",
-        Some(_) => "info",
+        Some(key) => PAGE_ICONS.iter().find(|(page, _)| *page == key).map_or("info", |(_, icon)| icon),
     }
 }
 
@@ -580,6 +586,33 @@ mod tests {
     use super::matching_templates;
     use crate::{Services, WordApp};
 
+    /// #1714: every side-menu item has its own icon, a drawn one (an unknown name would fall back
+    /// to a tile with its first letter, the only icon here that draws text).
+    #[test]
+    fn every_side_menu_item_has_a_drawn_icon() {
+        let ctx = egui::Context::default();
+        let mut names = std::collections::HashSet::new();
+        for (id, icon) in super::PAGE_ICONS {
+            assert!(names.insert(icon), "{id}: {icon} is used twice");
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let r = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), egui::vec2(18.0, 18.0));
+                crate::icons::paint(ui.painter(), r, icon, egui::Color32::WHITE, egui::Color32::WHITE);
+            });
+            // The frame's font textures aren't uploaded anywhere here (cleared before any assert,
+            // so a failure doesn't panic again while the frame is dropped).
+            out.textures_delta.clear();
+            fn has_text(s: &egui::Shape) -> bool {
+                match s {
+                    egui::Shape::Text(_) => true,
+                    egui::Shape::Vec(v) => v.iter().any(has_text),
+                    _ => false,
+                }
+            }
+            assert!(!out.shapes.is_empty(), "{id}: {icon} draws nothing");
+            assert!(!out.shapes.iter().any(|s| has_text(&s.shape)), "{id}: {icon} is not a drawn icon");
+        }
+    }
+
     /// #1873: the column leaves the title bar's band for the traffic lights only in a macOS
     /// window, not in full screen or elsewhere.
     #[test]
@@ -733,6 +766,37 @@ mod tests {
         assert_eq!(h.state().ui.backstage_page, "new", "the link opens New");
         assert!(h.query_by_label("Report").is_some(), "New shows every template");
         assert!(h.query_by_label("Recent").is_none(), "New has no Recent list");
+    }
+
+    /// Clicking the back arrow closes the File page and gives the keyboard back to the page,
+    /// without naming as focused a widget the frame didn't draw: with accessibility on (a screen
+    /// reader, or any UI Automation client on Windows) AccessKit ends the program over that, and
+    /// 0.8.0 vanished after Blank document, File, then the back arrow. The test harness always runs
+    /// AccessKit.
+    #[test]
+    fn back_arrow_returns_to_the_page_with_accessibility_on() {
+        let a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        assert!(h.state().canvas.widget_id.is_some(), "the page has been drawn");
+        h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+        h.run_steps(4);
+        // The arrow heads the File page's side bar; it has no label to find it by.
+        let arrow = egui::pos2(100.0, 32.0);
+        h.event(egui::Event::PointerMoved(arrow));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos: arrow, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        }
+        h.run_steps(4);
+        assert!(!h.state().ui.backstage, "the arrow closes the File page");
+        assert!(h.state().canvas.focused, "and the page has the keyboard");
     }
 
     /// #260: File › Info's Title and Author fields dropped every keystroke (they edited a copy
