@@ -880,7 +880,7 @@ dependencies = [
 [[package]]
 name = "craft-proof"
 version = "0.1.0"
-source = "git+https://github.com/brzuchal/craft-libs?rev=c1e25476b2a3a80f952bd27625d7f2be8f073031#c1e25476b2a3a80f952bd27625d7f2be8f073031"
+source = "git+https://github.com/brzuchal/craft-libs?rev=e4e7a4b7f90e503b23bfd9bcea613668c7e6cbb8#e4e7a4b7f90e503b23bfd9bcea613668c7e6cbb8"
 dependencies = [
  "miniz_oxide 0.8.9",
 ]
@@ -5231,6 +5231,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror 2.0.21",
+ "unicode-bidi",
  "wordcraft-doc",
  "wordcraft-geom",
  "zeroize",
@@ -5390,6 +5391,7 @@ dependencies = [
 name = "wordcraft-ui-egui"
 version = "0.8.0"
 dependencies = [
+ "cfb",
  "craft-ui",
  "egui",
  "egui_kittest",
