@@ -7,12 +7,12 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use kurbo::BezPath;
 use skrifa::instance::{Location, LocationRef, Size};
-use skrifa::outline::{DrawSettings, OutlinePen};
+use skrifa::outline::{DrawSettings, Engine, HintingInstance, HintingOptions, OutlinePen, Target};
 use skrifa::raw::FileRef;
 use skrifa::string::StringId;
 use skrifa::{GlyphId, MetadataProvider};
 
-mod user;
+pub(crate) mod user;
 pub use user::{FONT_FILE_EXTS, FontFormat, Installed, MAX_FONT_FILE_BYTES, UserFont, UserFontError, decode_font_file, is_font_file_name, sniff};
 
 /// The family used when a requested family is unknown (the UI sans).
@@ -84,6 +84,8 @@ pub struct FontFace {
     pub instance: Option<harfrust::ShaperInstance>,
     /// Basic Multilingual Plane coverage bitset, built on first use.
     bmp: std::sync::OnceLock<Box<[u64]>>,
+    // Some legacy CJK fonts assemble their contours with TrueType instructions.
+    outline_hinter: std::sync::OnceLock<Option<HintingInstance>>,
 }
 
 /// A cheap `Copy` handle to a face. Faces are never unloaded, so the handle lives for the rest of
@@ -177,7 +179,28 @@ impl FontFace {
         if let Some(f) = self.skrifa()
             && let Some(g) = f.outline_glyphs().get(GlyphId::new(gid))
         {
-            let _ = g.draw(DrawSettings::unhinted(Size::unscaled(), self.location()), &mut pen);
+            let hinter = self.outline_hinter.get_or_init(|| {
+                let outlines = f.outline_glyphs();
+                if !outlines.require_interpreter() {
+                    return None;
+                }
+                // At UPEM pixels, hinted coordinates remain in font units. This
+                // executes contour assembly without tying the cache to view zoom.
+                HintingInstance::new(
+                    &outlines,
+                    Size::new(self.upem as f32),
+                    self.location(),
+                    HintingOptions { engine: Engine::Interpreter, target: Target::Mono },
+                )
+                .map_err(|e| log::warn!("Cannot initialize outline interpreter for {}: {e}", self.family))
+                .ok()
+            });
+            let settings =
+                hinter.as_ref().map_or_else(|| DrawSettings::unhinted(Size::unscaled(), self.location()), |h| DrawSettings::hinted(h, false));
+            if let Err(e) = g.draw(settings, &mut pen) {
+                log::warn!("Cannot draw glyph {gid} in {}: {e}", self.family);
+                return BezPath::new();
+            }
         }
         pen.0
     }
@@ -634,12 +657,18 @@ pub(crate) fn legacy_family(family: &str, style: &str) -> String {
     if extra.is_empty() { family.to_string() } else { format!("{family} {}", extra.join(" ")) }
 }
 
+/// The color bitmap tables the renderer draws glyphs from ([`FontFace::color_glyph`]).
+#[cfg(not(target_arch = "wasm32"))]
+const COLOR_BITMAP_TABLES: [&[u8; 4]; 2] = [b"sbix", b"CBDT"];
+
 /// The names of every face in the font file at `path`, reading only its table directories and
 /// `name` and `fvar` tables: a scan opens hundreds of font files, many of them megabytes long
 /// (CJK collections run to 20 MB and more). A variable font yields one entry per named instance,
-/// as it does loaded.
+/// as it does loaded. Faces with none of the [`OUTLINE_TABLES`](crate::ui_fallback::OUTLINE_TABLES)
+/// and [`COLOR_BITMAP_TABLES`] are left out.
 #[cfg(not(target_arch = "wasm32"))]
 fn file_face_names(path: &std::path::Path) -> Vec<Found> {
+    use crate::ui_fallback::OUTLINE_TABLES;
     use std::io::{Read, Seek, SeekFrom};
     /// Caps on what a (possibly damaged) file can make the scan read.
     const MAX_FACES: u32 = 256;
@@ -666,6 +695,9 @@ fn file_face_names(path: &std::path::Path) -> Vec<Found> {
             let dir = read_at(start.into(), 12)?;
             let tables = u16::from_be_bytes(dir.get(4..6)?.try_into().ok()?) as usize;
             let records = read_at(u64::from(start) + 12, tables * 16)?;
+            if !records.as_chunks::<16>().0.iter().any(|r| OUTLINE_TABLES.iter().chain(&COLOR_BITMAP_TABLES).any(|t| r.starts_with(*t))) {
+                return None;
+            }
             let mut table = |tag: &[u8; 4]| -> Option<Vec<u8>> {
                 let rec = records.as_chunks::<16>().0.iter().find(|r| r.starts_with(tag))?;
                 let (offset, len) = (be32(rec, 8)?, be32(rec, 12)?);
@@ -862,6 +894,7 @@ fn make_face(bytes: FontBytes, index: u32, family: String, style: String, legacy
         bytes,
         index,
         bmp: std::sync::OnceLock::new(),
+        outline_hinter: std::sync::OnceLock::new(),
     })
 }
 
@@ -1761,6 +1794,26 @@ mod tests_sysfonts;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[ignore = "requires a locally licensed kaiu.ttf; set WORDCRAFT_TEST_KAI_FONT"]
+    fn kai_contours_include_complete_character_body() {
+        use kurbo::Shape;
+        let path = std::env::var_os("WORDCRAFT_TEST_KAI_FONT").expect("set WORDCRAFT_TEST_KAI_FONT");
+        let db = super::FontDb::with_font_dirs(vec![]);
+        db.set_system_fallback(false);
+        assert!(db.add_font(std::fs::read(path).unwrap()) > 0);
+        let face = db.face("DFKai-SB", "Regular");
+        assert_eq!(face.family, "DFKai-SB");
+        for ch in ['中', '文', '契', '約'] {
+            let outline = face.glyph_outline(face.glyph_for(ch));
+            let bounds = outline.bounding_box();
+            eprintln!("{ch}: {bounds:?}, upem={}", face.upem);
+            assert!(bounds.width() > face.upem * 0.5, "{ch}: missing horizontal strokes");
+            assert!(bounds.height() > face.upem * 0.5, "{ch}: missing vertical strokes");
+            assert!(std::sync::Arc::ptr_eq(&db.outline(&face, face.glyph_for(ch)), &db.outline(&face, face.glyph_for(ch))));
+        }
+    }
+
     use super::*;
 
     #[test]

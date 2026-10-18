@@ -24,6 +24,13 @@ fn nav_icon(key: Option<&str>) -> &'static str {
     }
 }
 
+/// The File column's top band on macOS (#222, #1873): as tall as the title bar in a window, where
+/// it holds the traffic lights; none in full screen, where the lights aren't docked top-left and
+/// the band would only be dead space above Back.
+fn title_band(mac: bool, full_screen: bool, title_bar: f32) -> f32 {
+    if mac && !full_screen { title_bar } else { 0.0 }
+}
+
 pub fn show(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let recovery = app.ui.backstage_page == "recover";
@@ -69,7 +76,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
             // macOS (#222): the File page covers the title bar, so the column's top band is the
             // title bar, as tall as macOS draws it around the traffic lights (#1559). It holds only
             // the window buttons and drags the window.
-            let band = if mac { app.mac_titlebar.height } else { 0.0 };
+            let band = title_band(mac, app.session.view.full_screen, app.mac_titlebar.height);
             let showing = app.ui.backstage_page.clone();
             let action = FileNav::new(tl!("Back"), &[&top, &rest], Some(showing.as_str()), &style, &paint)
                 .foot(&foot)
@@ -173,6 +180,9 @@ fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
             ui.label(&doc.name);
             ui.label(&doc.saved_at);
             ui.add_enabled_ui(!busy, |ui| {
+                // Buttons keep the theme's own text colour: the page-wide white override is
+                // for labels on the black background and would bleach button labels (#1895).
+                ui.visuals_mut().override_text_color = None;
                 ui.horizontal(|ui| {
                     if ui.button(tl!("Restore")).clicked() {
                         let _ = app.run("file.recover", json!({"restore": doc.id}));
@@ -187,6 +197,7 @@ fn recovery_page(app: &mut WordApp, ui: &mut Ui) {
     });
     ui.add_space(20.0);
     ui.horizontal(|ui| {
+        ui.visuals_mut().override_text_color = None;
         if ui.button(tl!("Continue without restoring")).clicked() {
             let _ = app.run("ui.backstage", json!({"value": false}));
             app.canvas.want_focus = true;
@@ -568,6 +579,15 @@ mod tests {
 
     use super::matching_templates;
     use crate::{Services, WordApp};
+
+    /// #1873: the column leaves the title bar's band for the traffic lights only in a macOS
+    /// window, not in full screen or elsewhere.
+    #[test]
+    fn the_title_band_is_left_for_traffic_lights_only_windowed() {
+        assert_eq!(super::title_band(true, false, 28.0), 28.0);
+        assert_eq!(super::title_band(true, true, 28.0), 0.0);
+        assert_eq!(super::title_band(false, false, 28.0), 0.0);
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn recovery_app() -> (WordApp, std::path::PathBuf) {
@@ -1016,17 +1036,17 @@ mod tests {
         h.get_by_label("Close").click();
         h.run_steps(4);
         assert!(matches!(h.state().dialog, Some(crate::dialogs::Dialog::SaveChanges { .. })), "unsaved changes ask first");
-        assert!(!h.state().quit_requested);
+        assert!(h.state().has_document());
 
         h.state_mut().run("ui.saveChanges", json!({"answer": "cancel"})).unwrap();
         h.run_steps(4);
-        assert!(!h.state().quit_requested, "Cancel keeps the document open");
+        assert!(h.state().has_document(), "Cancel keeps the document open");
         assert!(h.state().ui.backstage && h.state().ui.backstage_page == "info", "Cancel leaves the Backstage as it was");
 
         h.get_by_label("Close").click();
         h.run_steps(4);
         h.state_mut().run("ui.saveChanges", json!({"answer": "dontSave"})).unwrap();
-        assert!(h.state().quit_requested, "Don't Save closes");
+        assert!(!h.state().has_document() && !h.state().quit_requested, "Don't Save closes the document, not the window (#1712)");
     }
 
     /// A document without unsaved changes closes without a prompt.
@@ -1046,7 +1066,7 @@ mod tests {
         h.get_by_label("Close").click();
         h.run_steps(1);
         assert!(h.state().dialog.is_none(), "no prompt");
-        assert!(h.state().quit_requested);
+        assert!(!h.state().has_document() && !h.state().quit_requested);
     }
 
     #[test]
