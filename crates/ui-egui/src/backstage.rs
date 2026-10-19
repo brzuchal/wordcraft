@@ -346,6 +346,11 @@ fn open_list(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     ui.label(egui::RichText::new(tl!("Recent")).font(semibold(16.0)));
     ui.add_space(6.0);
+    let error = ui.ctx().data(|d| d.get_temp::<String>(open_error_id())).unwrap_or_default();
+    if !error.is_empty() {
+        ui.label(egui::RichText::new(error).color(ui.visuals().error_fg_color));
+        ui.add_space(6.0);
+    }
     if app.ui.recent.is_empty() {
         ui.label(egui::RichText::new(tl!("Documents you open will show up here.")).color(t.text_dim));
     }
@@ -359,11 +364,28 @@ fn open_list(app: &mut WordApp, ui: &mut Ui) {
         ui.painter().text(pos2(r.min.x + 40.0, r.min.y + 13.0), Align2::LEFT_CENTER, &name, medium(13.0), t.text);
         ui.painter().text(pos2(r.min.x + 40.0, r.min.y + 29.0), Align2::LEFT_CENTER, &p, regular(11.0), t.text_dim);
         if resp.clicked() {
-            let _ = app.run("file.open", json!({"path": p}));
-            app.ui.backstage = false;
-            app.canvas.want_focus = true;
+            let failed = open_recent(app, &p).err();
+            ui.ctx().data_mut(|d| d.insert_temp(open_error_id(), failed.unwrap_or_default()));
         }
     }
+}
+
+fn open_error_id() -> egui::Id {
+    egui::Id::new("backstage_open_error")
+}
+
+/// Drop the Recent list's open error once File is closed, so it doesn't come back next time.
+pub(crate) fn forget_open_error(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.remove::<String>(open_error_id()));
+}
+
+/// Open a file from the Recent list. A file that can't be opened (deleted, moved, unreadable)
+/// leaves File open so the list can say why, rather than closing it on a greyed-out window.
+fn open_recent(app: &mut WordApp, path: &str) -> Result<(), String> {
+    app.run("file.open", json!({"path": path}))?;
+    app.ui.backstage = false;
+    app.canvas.want_focus = true;
+    Ok(())
 }
 
 /// File › Open: the shared places panel (storytold/craft-libs#49). Recent lists the documents
@@ -418,6 +440,14 @@ fn open_page(app: &mut WordApp, ui: &mut Ui) {
         unreadable: tl!("This folder can't be read."),
     };
 
+    // A document that couldn't be opened (#2938): File stays open and says why above the panel.
+    let error = ui.ctx().data(|d| d.get_temp::<String>(open_error_id())).unwrap_or_default();
+    if !error.is_empty() {
+        egui::Frame::NONE.inner_margin(egui::Margin::symmetric(16, 10)).show(ui, |ui| {
+            ui.label(egui::RichText::new(error).color(ui.visuals().error_fg_color));
+        });
+    }
+
     // This computer is showing a folder: the shared helper lists it and says what a choice means.
     if let Some(folder) = app.file_browser.page.as_mut() {
         let entries = folder.entries();
@@ -428,9 +458,8 @@ fn open_page(app: &mut WordApp, ui: &mut Ui) {
             Some(PlacesAction::Select(0)) => app.file_browser.page = None,
             Some(action) => match folder.act(action) {
                 LocalOutcome::Open(path) => {
-                    let _ = app.run("file.open", json!({"path": path.to_string_lossy()}));
-                    app.ui.backstage = false;
-                    app.canvas.want_focus = true;
+                    let failed = open_recent(app, &path.to_string_lossy()).err();
+                    ui.ctx().data_mut(|d| d.insert_temp(open_error_id(), failed.unwrap_or_default()));
                 }
                 LocalOutcome::Browse => {
                     let _ = app.run("ui.openFileDialog", json!({}));
@@ -466,9 +495,8 @@ fn open_page(app: &mut WordApp, ui: &mut Ui) {
     match PlacesPanel::new(&places, Some(0), content, &style, labels).crumbs(&crumbs).show(ui).action {
         Some(PlacesAction::Activate(i)) => {
             if let Some((path, ..)) = recent.get(i) {
-                let _ = app.run("file.open", json!({"path": path}));
-                app.ui.backstage = false;
-                app.canvas.want_focus = true;
+                let failed = open_recent(app, path).err();
+                ui.ctx().data_mut(|d| d.insert_temp(open_error_id(), failed.unwrap_or_default()));
             }
         }
         Some(PlacesAction::Select(1)) => {
@@ -611,6 +639,19 @@ mod tests {
             assert!(!out.shapes.is_empty(), "{id}: {icon} draws nothing");
             assert!(!out.shapes.iter().any(|s| has_text(&s.shape)), "{id}: {icon} is not a drawn icon");
         }
+    }
+
+    /// #2938: opening a deleted file from Recent keeps File open and reports the error instead of
+    /// closing it on a greyed-out window.
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn opening_a_missing_recent_file_keeps_file_open_with_the_error() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        app.ui.backstage = true;
+        let missing = std::env::temp_dir().join(format!("wordcraft-missing-{}.docx", std::process::id()));
+        let err = super::open_recent(&mut app, &missing.to_string_lossy()).unwrap_err();
+        assert!(!err.is_empty());
+        assert!(app.ui.backstage, "File stays open");
     }
 
     /// #1873: the column leaves the title bar's band for the traffic lights only in a macOS
@@ -799,6 +840,129 @@ mod tests {
         assert!(h.state().canvas.focused, "and the page has the keyboard");
     }
 
+    /// A harness over the whole app; kittest always runs AccessKit, so a frame that names as
+    /// focused a widget it didn't draw panics with "Focused ID … is not in the node list".
+    fn a11y_harness(a: WordApp) -> egui_kittest::Harness<'static, WordApp> {
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        h
+    }
+
+    /// A primary click at `pos` (for chrome with no label to find it by).
+    fn click_at(h: &mut egui_kittest::Harness<'static, WordApp>, pos: egui::Pos2) {
+        h.event(egui::Event::PointerMoved(pos));
+        for pressed in [true, false] {
+            h.event(egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+        }
+        h.run_steps(4);
+    }
+
+    /// Back on macOS in a window: the shared column's first row, under the title bar's band.
+    fn mac_back(a: &WordApp) -> egui::Pos2 {
+        egui::pos2(100.0, a.mac_titlebar.height + 19.0)
+    }
+
+    /// A spot in the title bar beside the traffic lights, where Back's chevron used to be.
+    fn mac_title_bar_spot(a: &WordApp) -> egui::Pos2 {
+        egui::pos2(a.mac_titlebar.content_left + 3.0, a.mac_titlebar.height / 2.0)
+    }
+
+    /// #2972: on macOS the File page's back button is the chevron beside the traffic lights (the
+    /// "sidebar collapse toggle" of the report; there is no other toggle there). Blank document,
+    /// File, then the chevron ended 0.8.0 with AccessKit's "Focused ID … is not in the node
+    /// list". The same spot clicked in the editor (the title bar) must not either.
+    #[test]
+    fn mac_back_chevron_returns_to_the_page_with_accessibility_on() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        a.integrated_titlebar = true;
+        a.mac_titlebar = crate::chrome::MacTitleBar { height: 28.0, content_left: 70.0 };
+        let (chevron, title_bar) = (mac_back(&a), mac_title_bar_spot(&a));
+        let mut h = a11y_harness(a);
+        assert!(h.state().canvas.widget_id.is_some(), "the page has been drawn");
+        for _ in 0..2 {
+            h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+            h.run_steps(4);
+            assert!(h.state().ui.backstage);
+            click_at(&mut h, chevron);
+            assert!(!h.state().ui.backstage, "the chevron closes the File page");
+            assert!(h.state().canvas.focused, "and the page has the keyboard");
+            // The editor's title bar beside the traffic lights.
+            click_at(&mut h, title_bar);
+            assert!(!h.state().ui.backstage);
+        }
+    }
+
+    /// #2931: File › New › Blank document with a document open returns to the editor without
+    /// AccessKit losing the focused node; and so does Home's Blank document tile and Escape.
+    #[test]
+    fn blank_document_from_the_file_page_with_accessibility_on() {
+        let work = |mac: bool| {
+            let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("Work")), Services::default());
+            a.integrated_titlebar = mac;
+            a11y_harness(a)
+        };
+        for mac in [false, true] {
+            for page in ["new", "home"] {
+                // A fresh "Work" document each time, so each path must really make a blank one.
+                let mut h = work(mac);
+                h.state_mut().run("ui.backstage", json!({"value": true, "page": page})).unwrap();
+                h.run_steps(4);
+                h.get_by_label("Blank document").click();
+                h.run_steps(4);
+                assert!(!h.state().ui.backstage, "{page}: Blank document returns to the editor");
+                assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "", "{page}: a new blank document");
+                assert!(h.state().dialog.is_none(), "{page}: nothing asks first");
+            }
+            let mut h = work(mac);
+            h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+            h.run_steps(4);
+            h.key_press(egui::Key::Escape);
+            h.run_steps(4);
+            assert!(!h.state().ui.backstage, "Escape closes the File page");
+            assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "Work", "Escape keeps the document");
+        }
+    }
+
+    /// #2908: File › Options, then the back arrow (Windows/Linux layout and the macOS chevron),
+    /// with a document open and from the Start screen, without AccessKit ending the program.
+    #[test]
+    fn options_back_arrow_with_accessibility_on() {
+        for (mac, start) in [(false, false), (true, false), (false, true), (true, true)] {
+            let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+            a.integrated_titlebar = mac;
+            if start {
+                a.ui.start_screen = true;
+                assert!(a.start_screen());
+            }
+            let back = if mac { mac_back(&a) } else { egui::pos2(100.0, 32.0) };
+            let mut h = a11y_harness(a);
+            if !start {
+                h.state_mut().run("ui.backstage", json!({"value": true})).unwrap();
+                h.run_steps(4);
+            }
+            h.get_by_role_and_label(egui::accesskit::Role::Button, "Options").click();
+            h.run_steps(4);
+            assert_eq!(h.state().ui.backstage_page, "options", "mac {mac} start {start}");
+            // Into a pane, so the Options page has a focused widget of its own.
+            h.get_by_label("Display").click();
+            h.run_steps(4);
+            click_at(&mut h, back);
+            assert!(!h.state().ui.backstage, "mac {mac} start {start}: the arrow closes the File page");
+            if start {
+                assert!(!h.state().has_document(), "mac {mac}: from the Start screen, an empty window");
+            } else {
+                assert!(h.state().canvas.focused, "mac {mac}: and the page has the keyboard");
+            }
+        }
+    }
+
     /// #260: File › Info's Title and Author fields dropped every keystroke (they edited a copy
     /// re-read each frame and only wrote it back when the field lost focus), so a save had no
     /// title or author. Typing now lands in the document as it happens, one undo step per field,
@@ -863,6 +1027,34 @@ mod tests {
 
     /// File › Open is the shared places panel: Recent with the documents opened lately, This
     /// computer with the folders listed in the page, and Browse for the system's dialog.
+    /// #2938 in the places panel: a recent document that is gone keeps File open and says why.
+    #[test]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn a_missing_recent_document_keeps_the_open_page_with_the_error() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        let missing = std::env::temp_dir().join(format!("wordcraft-gone-{}.docx", std::process::id()));
+        a.ui.recent = vec![missing.to_string_lossy().to_string()];
+        a.run("ui.backstage", json!({"value": true, "page": "open"})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
+            |ui, app: &mut WordApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            a,
+        );
+        h.run_steps(4);
+        let row = format!("wordcraft-gone-{}.docx, {}", std::process::id(), std::env::temp_dir().to_string_lossy().trim_end_matches('/'));
+        h.get_by_label(&row).focus();
+        h.run_steps(2);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(4);
+        assert!(h.state().ui.backstage && h.state().ui.backstage_page == "open", "File stays on Open");
+        let error = h.ctx.data(|d| d.get_temp::<String>(super::open_error_id())).unwrap_or_default();
+        assert!(!error.is_empty(), "the reason is kept to show");
+        assert!(h.query_by_label(&error).is_some(), "and shown above the places");
+    }
+
     #[test]
     fn open_page_lists_places_and_recent_documents() {
         let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
