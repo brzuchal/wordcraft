@@ -104,6 +104,7 @@
 	Color: {color}	Boja: {color}
 	Compress punctuation at the start of a line	Sažmi interpunkciju na početku reda
 	Confirm password:	Potvrdite lozinku:
+	Continue from previous section	Nastavi od prethodnog odeljka
 	Couldn't make WordCraft the default: {error}	WordCraft nije mogao da postane podrazumevana aplikacija: {error}
 	Custom dictionary	Prilagođeni rečnik
 	Dark page (white text on black)	Tamna stranica (beo tekst na crnom)
@@ -158,6 +159,8 @@
 	Opens Settings › Default apps, where you choose WordCraft for .docx and the other document types.	Otvara Podešavanja › Podrazumevane aplikacije, gde birate WordCraft za .docx i druge vrste dokumenata.
 	Overtype	Prepisivanje
 	Overtype (typing replaces the characters after the caret)	Prepisivanje (otkucano zamenjuje znakove posle kursora)
+	Page Number Format	Format broja stranice
+	Page numbering	Numeracija stranica
 	Show alignment guides when moving pictures and shapes	Prikazuj vodilje za poravnanje pri pomeranju slika i oblika
 	Moved objects snap to the page's edges and centre, the margins and other objects. Hold Alt to move freely.	Pomereni objekti se prianjaju uz ivice i sredinu stranice, margine i druge objekte. Držite Alt da biste pomerali slobodno.
 	Page display	Prikaz strane
@@ -426,6 +429,8 @@
 	Edit\nRecipient List	Uredi\nlistu primalaca
 	Edited	Izmenjeno
 	Editing	Uređivanje
+	Editing endnote	Uređivanje endnote
+	Editing footnote	Uređivanje fusnote
 	Editing header/footer	Uređivanje zaglavlja/podnožja
 	Editing — edit the document directly	Uređivanje — menjajte dokument direktno
 	Editor	Urednik
@@ -1310,6 +1315,9 @@
 	{cols}×{rows} Table	Tabela {cols}×{rows}
 	AaBbYyZz	AaBbYyZz ČčĐđ
 	pt	pt
+	cm	cm
+	mm	mm
+	pi	pi
 	Document1	Dokument1
 	Username	Korisničko ime
 	Display name	Ime za prikaz
@@ -2235,6 +2243,7 @@
 	Submitting print job…	Slanje zadatka za štampanje…
 	Print job submitted.	Zadatak za štampanje je poslat.
 	Print job submitted: {receipt}	Zadatak za štampanje je poslat: {receipt}
+	Print job submitted: spooled {count} sheet(s)	Zadatak za štampu je poslat: u red za štampu poslato listova: {count}
 	Print failed: the printing worker stopped.	Štampanje nije uspelo: proces štampanja je zaustavljen.
 	Print settings	Podešavanja štampanja
 	Submit print job	Pošalji zadatak za štampanje
@@ -2268,6 +2277,9 @@
 # Reading Mode column widths (#1040)
 	Narrow	Uska
 	Medium	Srednja
+	Dot-dot-dash	Tačka-tačka-crta
+	More Underlines…	Još podvlačenja…
+	Underline Color	Boja podvlačenja
 # Split Cells and Convert Text to Table (#2592)
 	Merge cells before split	Spoji ćelije pre deljenja
 	Table size	Veličina tabele
@@ -2307,6 +2319,17 @@
 	Type a size in any unit, such as 5 cm or 300 px. The other side follows, so the picture keeps its proportions.	Unesite veličinu u bilo kojoj jedinici, na primer 5 cm ili 300 px. Druga strana se prilagođava, pa slika zadržava svoje proporcije.
 
 	Import…	Uvezi…
+
+# Personal templates (#2852)
+	Personal	Lični
+	Personal Templates	Lični šabloni
+	Templates you save in your templates folder show up here.	Ovde se prikazuju šabloni koje sačuvate u fascikli šablona.
+	Save as Word Template…	Sačuvaj kao Word šablon…
+	Saves a .dotx template in your templates folder. It shows up in File › New under Personal.	Čuva .dotx šablon u fascikli šablona. Prikazuje se u Fajl › Novo pod Lični.
+	File locations	Lokacije datoteka
+	User templates:	Korisnički šabloni:
+	Not set	Nije postavljeno
+	File › New lists the .dotx and .dotm templates here under Personal; Save as Word Template starts here.	Fajl › Novo prikazuje .dotx i .dotm šablone odavde pod Lični; Sačuvaj kao Word šablon počinje ovde.
 	Format Shape Pane	Okno „Format oblika“
 	Format Shape	Format oblika
 	Format Shape…	Formatiraj oblik…
@@ -2347,3 +2370,10 @@
 	Deep	Dubok
 	Lit from Bottom	Osvetljen odozdo
 	Center Glow	Sjaj iz sredine
+# File › Home greeting
+	Good morning	Dobro jutro
+	Good afternoon	Dobar dan
+	Good evening	Dobro veče
+	More tabs	Još kartica
+# #3013: Insert Table of Figures
+	Include label and number	Uključi oznaku i broj
