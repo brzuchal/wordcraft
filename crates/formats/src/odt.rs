@@ -348,7 +348,8 @@ impl Writer {
     fn plain_inlines(&mut self, inl: &[Inline], out: &mut String) {
         let mut prev_space = true;
         let inl = model::equations_as_text(inl);
-        for i in inl.iter() {
+        let last = inl.len().saturating_sub(1);
+        for (idx, i) in inl.iter().enumerate() {
             match i {
                 Inline::Text(t, f) => {
                     let mut body = String::new();
@@ -389,7 +390,8 @@ impl Writer {
                         }
                     }
                     if spaces > 0 {
-                        flush(&mut body, &mut spaces, prev_space);
+                        // The reader drops a literal space at the end of a paragraph.
+                        flush(&mut body, &mut spaces, prev_space || idx == last);
                         prev_space = true;
                     }
                     // A script, `file:`, UNC or other non-web target is written as plain text, as
@@ -792,16 +794,10 @@ fn join_deleted_marks(blocks: &[FBlock]) -> Option<(Vec<FBlock>, HashMap<usize, 
 fn now_iso() -> String {
     let t = now_unix();
     let (days, secs) = (t.div_euclid(86_400), t.rem_euclid(86_400));
-    // Days since 1970-01-01 → civil date (Howard Hinnant's algorithm).
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
+    // Reuse the crate's 400-year-cycle converter (chrono within a cycle, cycles carried in the
+    // year) so a clock past chrono's range keeps the proleptic Gregorian date the old hand-rolled
+    // code gave, never the epoch. `{y:04}` rather than `%Y`, which writes a `+` before year 10000.
+    let (y, m, d) = crate::sheet::civil(days);
     format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
@@ -1609,7 +1605,7 @@ impl Body<'_> {
         {
             let style = self.lists.iter().rev().find_map(|l| l.0.clone());
             let ordered = style.and_then(|s| self.styles.lists.get(&s)).and_then(|v| v.get(lv.min(9)).copied()).unwrap_or(false);
-            p.list = Some(ListInfo { ordered, level: lv.min(8) as u8 });
+            p.list = Some(ListInfo { ordered, level: lv.min(8) as u8, start: 1 });
             self.para_cont = self.item_used.last().copied().unwrap_or(false);
             if let Some(u) = self.item_used.last_mut() {
                 *u = true;
@@ -3359,5 +3355,10 @@ mod tests {
         let d = Document::from_text("    indented code  ");
         let back = import(&export(&d).unwrap()).unwrap();
         assert_eq!(back.plain_text(wordcraft_doc::StoryRef::Body).trim_end_matches('\n'), "    indented code  ");
+        for t in ["trail ", "trail  "] {
+            let d = Document::from_text(t);
+            let back = import(&export(&d).unwrap()).unwrap();
+            assert_eq!(back.plain_text(wordcraft_doc::StoryRef::Body).trim_end_matches('\n'), t);
+        }
     }
 }

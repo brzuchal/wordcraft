@@ -332,54 +332,57 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                     .collect();
                 let plan = plan_strip(&specs, button_levels, ui.available_width(), MORE_TABS_W + 2.0);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // No document open (#1129): nothing to share, edit or comment on.
-                    if !app.has_document() {
-                        ui.disable();
-                    }
-                    let (share_size, share_text) = if plan.buttons < 2 { (((share_w + 36.0).max(74.0), 24.0), true) } else { ((30.0, 24.0), false) };
-                    let (r, resp) = ui.allocate_exact_size(vec2(share_size.0, share_size.1), Sense::click());
-                    ui.painter().rect_filled(r, 4.0, if resp.hovered() { t.accent_text } else { t.accent });
-                    let icon_x = if share_text { r.min.x + 14.0 } else { r.center().x };
-                    icons::paint(
-                        ui.painter(),
-                        Rect::from_center_size(pos2(icon_x, r.center().y), vec2(14.0, 14.0)),
-                        "share",
-                        t.on_accent,
-                        t.on_accent,
-                    );
-                    if share_text {
-                        ui.painter().text(pos2(r.min.x + 26.0, r.center().y), Align2::LEFT_CENTER, share, medium(12.0), t.on_accent);
-                    }
-                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, share));
-                    if resp.on_hover_text(tl!("Export a copy to share (PDF, Word document)")).clicked() {
-                        let _ = app.run("ui.backstage", json!({"value": true, "page": "export"}));
-                    }
-                    ui.add_space(6.0);
-                    let track = app.session.doc.settings.track_changes;
-                    let mode = if plan.buttons == 0 {
-                        crate::widgets::icon_text_menu_button(ui, "pencil", editing_label, regular(12.0))
-                    } else {
-                        crate::widgets::icon_only_button(ui, "pencil", editing_label, regular(12.0), true)
-                    };
-                    egui::Popup::menu(&mode).show(|ui| {
-                        if ui.selectable_label(!track, tl!(tl!("Editing — edit the document directly"))).clicked() {
-                            let _ = app.run("review.trackChanges", json!({"value": false}));
-                            ui.close();
+                    // No document open (#1129): nothing to share, edit or comment on — but only
+                    // these buttons. Disabling the whole line took the tab strip with it: the
+                    // tabs took clicks that did nothing, so the empty window had no way back to
+                    // the Start screen (#3045).
+                    ui.add_enabled_ui(app.has_document(), |ui| {
+                        let (share_size, share_text) =
+                            if plan.buttons < 2 { (((share_w + 36.0).max(74.0), 24.0), true) } else { ((30.0, 24.0), false) };
+                        let (r, resp) = ui.allocate_exact_size(vec2(share_size.0, share_size.1), Sense::click());
+                        ui.painter().rect_filled(r, 4.0, if resp.hovered() { t.accent_text } else { t.accent });
+                        let icon_x = if share_text { r.min.x + 14.0 } else { r.center().x };
+                        icons::paint(
+                            ui.painter(),
+                            Rect::from_center_size(pos2(icon_x, r.center().y), vec2(14.0, 14.0)),
+                            "share",
+                            t.on_accent,
+                            t.on_accent,
+                        );
+                        if share_text {
+                            ui.painter().text(pos2(r.min.x + 26.0, r.center().y), Align2::LEFT_CENTER, share, medium(12.0), t.on_accent);
                         }
-                        if ui.selectable_label(track, tl!(tl!("Reviewing — edits become suggestions"))).clicked() {
-                            let _ = app.run("review.trackChanges", json!({"value": true}));
-                            ui.close();
+                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, share));
+                        if resp.on_hover_text(tl!("Export a copy to share (PDF, Word document)")).clicked() {
+                            let _ = app.run("ui.backstage", json!({"value": true, "page": "export"}));
+                        }
+                        ui.add_space(6.0);
+                        let track = app.session.doc.settings.track_changes;
+                        let mode = if plan.buttons == 0 {
+                            crate::widgets::icon_text_menu_button(ui, "pencil", editing_label, regular(12.0))
+                        } else {
+                            crate::widgets::icon_only_button(ui, "pencil", editing_label, regular(12.0), true)
+                        };
+                        egui::Popup::menu(&mode).show(|ui| {
+                            if ui.selectable_label(!track, tl!(tl!("Editing — edit the document directly"))).clicked() {
+                                let _ = app.run("review.trackChanges", json!({"value": false}));
+                                ui.close();
+                            }
+                            if ui.selectable_label(track, tl!(tl!("Reviewing — edits become suggestions"))).clicked() {
+                                let _ = app.run("review.trackChanges", json!({"value": true}));
+                                ui.close();
+                            }
+                        });
+                        ui.add_space(4.0);
+                        let comments_button = if plan.buttons == 0 {
+                            crate::widgets::icon_text_button(ui, "comment", comments, regular(12.0))
+                        } else {
+                            crate::widgets::icon_only_button(ui, "comment", comments, regular(12.0), false)
+                        };
+                        if comments_button.clicked() {
+                            let _ = app.run("view.commentsPane", json!({}));
                         }
                     });
-                    ui.add_space(4.0);
-                    let comments_button = if plan.buttons == 0 {
-                        crate::widgets::icon_text_button(ui, "comment", comments, regular(12.0))
-                    } else {
-                        crate::widgets::icon_only_button(ui, "comment", comments, regular(12.0), false)
-                    };
-                    if comments_button.clicked() {
-                        let _ = app.run("view.commentsPane", json!({}));
-                    }
                     ui.add_space(8.0);
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                         // The tabs that don't fit go into a » menu at the end of the strip (#897, #2026).
@@ -393,6 +396,9 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
                             let (r, resp) = ui.allocate_exact_size(vec2(w, 30.0), Sense::click());
                             if app.ui.keytips == crate::keytips::Phase::Tabs {
                                 crate::keytips::record_tab(r, tab, &app.ui.keytip_prefix, &mut app.keytip_rects);
+                            } else if app.ui.keytips == crate::keytips::Phase::Legacy {
+                                // Every tab: they only place the legacy keys' hint (#1697).
+                                crate::keytips::record_tab(r, tab, "", &mut app.keytip_rects);
                             }
                             let active = app.ui.tab == tab && !app.ui.backstage;
                             resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, active, shown));
@@ -670,9 +676,11 @@ fn mi_text(ui: &mut Ui, app: &mut WordApp, text: &str, id: &str, params: Value) 
 }
 
 /// The proofing languages the Language menu offers: tag and English name (translated when drawn).
-pub(crate) const PROOFING_LANGUAGES: [(&str, &str); 10] = [
+pub(crate) const PROOFING_LANGUAGES: [(&str, &str); 12] = [
     ("en-US", "English (United States)"),
     ("en-GB", "English (United Kingdom)"),
+    ("en-AU", "English (Australia)"),
+    ("en-CA", "English (Canada)"),
     ("pl-PL", "Polish"),
     ("pt-BR", "Portuguese (Brazil)"),
     ("it-IT", "Italian"),
@@ -2351,11 +2359,52 @@ fn chart_design(app: &mut WordApp, ui: &mut Ui) {
     });
 }
 
+/// Shape Fill › Gradient: No Gradient, Light and Dark Variations of the shape's colour, More
+/// Gradients… (the Format Shape pane).
+pub(crate) fn gradient_menu(ui: &mut Ui, app: &mut WordApp, fill: Option<&wordcraft_doc::fill::Fill>) {
+    use wordcraft_engine::cmd::shape_fill;
+    let pos = wordcraft_engine::cmd::objects::selected(&app.session).map(|(p, _)| p);
+    let main = match (fill, &pos) {
+        (Some(f), Some(p)) => crate::format_shape::variation_base(ui.ctx(), p, f),
+        (Some(f), None) => f.main_color(),
+        _ => app.session.doc.settings.theme_colors.get(4).copied().unwrap_or(wordcraft_doc::Rgb(68, 114, 196)),
+    };
+    // No Gradient: the shape's colour, solid.
+    ui.label(egui::RichText::new(tl!("No Gradient")).small().weak());
+    if crate::format_shape::swatch(ui, &wordcraft_doc::fill::Fill::solid(main), "No Gradient") {
+        let _ = app.run("shape.fill", json!({"color": main.hex()}));
+        ui.close();
+    }
+    for (title, tiles) in ["Light Variations", "Dark Variations"].into_iter().zip(shape_fill::variations(main)) {
+        ui.label(egui::RichText::new(tl!(title)).small().weak());
+        egui::Grid::new(title).spacing(vec2(4.0, 4.0)).show(ui, |ui| {
+            for (i, (f, name)) in tiles.iter().enumerate() {
+                if crate::format_shape::swatch(ui, f, name) {
+                    let _ = app.run("shape.fill", shape_fill::params(Some(f)));
+                    if let (Some(p), Some(Some(now))) = (pos.clone(), crate::format_shape::current(app)) {
+                        crate::format_shape::remember_variation(ui.ctx(), p, now, main);
+                    }
+                    ui.close();
+                }
+                if i % 5 == 4 {
+                    ui.end_row();
+                }
+            }
+        });
+    }
+    ui.separator();
+    if ui.button(tl!("More Gradients…")).clicked() {
+        let _ = app.run("view.formatShapePane", json!({"value": true}));
+        ui.close();
+    }
+}
+
 /// Shape Format: fill, outline and effects of the selected shape, and its arrangement.
 fn shape_format(app: &mut WordApp, ui: &mut Ui) {
-    let (stroke, glow_size) = match wordcraft_engine::cmd::objects::selected(&app.session) {
-        Some((_, wordcraft_doc::para::InlineObject::Shape { stroke, effects, .. })) => (stroke, effects.glow.map(|g| g.size)),
-        _ => (None, None),
+    let (stroke, glow_size, fill) = match wordcraft_engine::cmd::objects::selected(&app.session) {
+        Some((_, wordcraft_doc::para::InlineObject::Shape { stroke, effects, fill, .. })) => (stroke, effects.glow.map(|g| g.size), fill),
+        Some((_, o)) => (None, None, o.canvas_style().and_then(|c| c.fill.clone())),
+        _ => (None, None, None),
     };
     let theme = app.session.doc.settings.theme_colors.clone();
     group(ui, "Shape Styles", None, app, |ui, app| {
@@ -2363,6 +2412,8 @@ fn shape_format(app: &mut WordApp, ui: &mut Ui) {
             menu_button(ui, app, "shading", Some("Shape Fill"), "Shape Fill", false, "shape.fill", |ui, app| {
                 mi(ui, app, "No Color", "shape.fill", json!({"color": null}));
                 crate::colors::menu(ui, app, &theme, Target::cmd("shape.fill"));
+                ui.separator();
+                ui.menu_button(tl!("Gradient"), |ui| gradient_menu(ui, app, fill.as_ref()));
             });
             menu_button(ui, app, "pen", Some("Shape Outline"), "Shape Outline", false, "shape.outline", |ui, app| {
                 mi(ui, app, "No Color", "shape.outline", json!({"color": null}));
@@ -3022,7 +3073,7 @@ mod tests {
         assert_eq!(language_name(Some("en-ZZ")), "English (ZZ)");
         assert_eq!(language_name(Some("xx-YY")), "xx-YY");
         let exact = |cur: &'static str| move |t: &str| t.eq_ignore_ascii_case(cur);
-        for tag in ["fr-CA", "pt-AO", "en-AU"] {
+        for tag in ["fr-CA", "pt-AO", "en-SG"] {
             let c = language_checks(tag, exact(tag));
             let name = c.extra.expect("shown above the list");
             assert!(!PROOFING_LANGUAGES.iter().any(|(_, n)| *n == name), "{name} is listed once");
@@ -3032,6 +3083,30 @@ mod tests {
         let c = language_checks("PT-br-x-test", |_| false);
         assert_eq!(c.extra, None);
         assert_eq!(c.listed, PROOFING_LANGUAGES.map(|(t, _)| t == "pt-BR"));
+    }
+
+    /// The Englishes WordCraft proofs differently are in the menu, checked by their tags, and
+    /// every English region has a name (#1281, #1045).
+    #[test]
+    fn english_dialects_are_in_the_language_menu() {
+        for (tag, name) in [
+            ("en-US", "English (United States)"),
+            ("en-GB", "English (United Kingdom)"),
+            ("en-AU", "English (Australia)"),
+            ("en-CA", "English (Canada)"),
+        ] {
+            assert!(PROOFING_LANGUAGES.contains(&(tag, name)), "{tag}");
+            assert_eq!(language_name(Some(tag)), name);
+            let c = language_checks(&tag.to_ascii_lowercase(), |t| t.eq_ignore_ascii_case(tag));
+            assert_eq!((c.extra, c.listed), (None, PROOFING_LANGUAGES.map(|(t, _)| t == tag)), "{tag}");
+        }
+        for (tag, name) in
+            [("en-NZ", "English (New Zealand)"), ("en-IE", "English (Ireland)"), ("en-ZA", "English (South Africa)"), ("en-IN", "English (India)")]
+        {
+            assert!(crate::dialogs_layout::LANGUAGES.contains(&(tag, name)), "{tag}");
+            assert_eq!(language_name(Some(tag)), name);
+        }
+        assert_eq!(language_name(Some("en-SG")), "English (Singapore)");
     }
 
     #[test]
@@ -3311,6 +3386,28 @@ mod tests {
         assert!(h.state().ui.backstage, "File › Options opened");
         assert_eq!(h.state().ui.options_pane, "language");
         assert_eq!(language_name(Some("de-DE")), "German (Germany)");
+    }
+
+    /// #1281: every short-list entry (the four Englishes, Indonesian…) is picked in the menu:
+    /// clicking it sets the selection's proofing language, and the entry is then the checked one.
+    #[test]
+    fn every_proofing_language_is_picked_from_the_language_menu() {
+        use egui_kittest::kittest::{By, NodeT, Queryable};
+        let mut app = WordApp::new(Session::new(wordcraft_doc::Document::from_text("Colour")), crate::Services::default());
+        app.run("select.all", json!({})).unwrap();
+        let mut h =
+            egui_kittest::Harness::builder().with_size(vec2(400.0, 500.0)).build_ui_state(|ui, app: &mut WordApp| language_menu(ui, app), app);
+        h.run();
+        for (tag, name) in PROOFING_LANGUAGES {
+            h.get(By::new().label_contains(name)).click();
+            h.run();
+            let st = h.state_mut().session.run("format.state", &json!({})).unwrap();
+            assert_eq!(st.get("lang").and_then(Value::as_str), Some(tag), "{name}");
+            for (_, other) in PROOFING_LANGUAGES {
+                let ticked = h.get(By::new().label_contains(other)).accesskit_node().toggled();
+                assert_eq!(ticked == Some(egui::accesskit::Toggled::True), other == name, "{name}: {other} ticked {ticked:?}");
+            }
+        }
     }
 
     #[test]
