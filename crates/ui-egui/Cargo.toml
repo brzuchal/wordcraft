@@ -10,8 +10,8 @@ workspace = true
 
 [dependencies]
 # The Slider and ZoomBar from https://github.com/storytold/craft-libs/pull/33, pinned to its branch in
-# a fork until it merges; the branch carries the craft-ui of main's rev (d27646a) too.
-craft-ui = { git = "https://github.com/brzuchal/craft-libs", rev = "677d0aa28d1bdbbf1a8e75ee057d7ec2d5ea2455" }
+# a fork until it merges; the branch carries the craft-ui of main's rev (25da131) too.
+craft-ui = { git = "https://github.com/brzuchal/craft-libs", rev = "61f7ab83b8bab760a431e921a845c7011c6dfbf8" }
 # Interface translations: lookup, fallback, plurals and system-locale matching over the craft-i18n
 # catalogs that `build.rs` embeds from `CRAFT_I18N_DIR` (storytold/craft-i18n, pinned in
 # `craft-i18n.rev`). Its own rev, ahead of craft-ui's: lazy per-locale parsing
@@ -19,16 +19,16 @@ craft-ui = { git = "https://github.com/brzuchal/craft-libs", rev = "677d0aa28d1b
 craft-i18n = { git = "https://github.com/storytold/craft-libs", rev = "17744430be327d0257496a6a31c8d38fe20a6756" }
 wordcraft-geom = { workspace = true, features = ["image"] }
 wordcraft-doc = { workspace = true }
-unicode-bidi = { workspace = true }
 wordcraft-fonts = { workspace = true }
 wordcraft-layout = { workspace = true }
 wordcraft-render = { workspace = true }
 wordcraft-engine = { workspace = true }
 wordcraft-zotero = { workspace = true }
-egui = { workspace = true }
+egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
+web-time = { workspace = true }
 # Pictures pasted from the system clipboard arrive as pixels and are inserted as PNG (#45).
 image = { workspace = true }
 # The system's preferred interface languages (#8) and region (#838). Native: OS APIs; wasm:
@@ -51,6 +51,12 @@ js-sys = "0.3"
 
 [dev-dependencies]
 cfb = { workspace = true }
+# Producer tests simulate a globally exhausted IME revision allocator through the engine's
+# explicit test-support feature; production builds of this crate never enable it.
+wordcraft-engine = { workspace = true, features = ["test-support"] }
+# kittest's own dev-dependencies do not propagate their font features. Declare the fonts the
+# interface tests lay out explicitly: default faces plus monochrome emoji fallbacks.
+egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts"] }
 egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }
 zip = { workspace = true }
 
