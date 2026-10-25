@@ -828,6 +828,37 @@ mod tests {
         }
     }
 
+    /// Regression test for #504: the side menu is a fixed 200 points wide, but egui drew a resize
+    /// line and showed a resize pointer on its right edge that did nothing.
+    #[test]
+    fn the_side_menu_edge_is_not_a_resize_handle() {
+        let mut app = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), Services::default());
+        app.ui.language = "en".into();
+        app.ui.backstage = true;
+        let ctx = egui::Context::default();
+        let edge = egui::pos2(200.0, 400.0);
+        for frame in 0..8 {
+            let mut input = egui::RawInput {
+                time: Some(f64::from(frame) * 0.1),
+                screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1440.0, 900.0))),
+                ..Default::default()
+            };
+            if frame > 0 {
+                input.events.push(egui::Event::PointerMoved(edge));
+            }
+            let mut out = ctx.run_ui(input, |ui| {
+                app.logic(&ctx.clone());
+                app.ui(ui);
+            });
+            out.textures_delta.clear();
+            if frame > 2 {
+                assert!(app.ui.backstage, "File is open");
+                let cursor = format!("{:?}", out.platform_output.cursor_icon);
+                assert!(!cursor.starts_with("Resize"), "frame {frame}: the menu edge shows a resize pointer ({cursor})");
+            }
+        }
+    }
+
     /// #2938: opening a deleted file from Recent keeps File open and reports the error instead of
     /// closing it on a greyed-out window.
     #[test]
@@ -1702,6 +1733,10 @@ mod tests {
     #[test]
     fn the_file_pages_home_can_have_its_own_wording() {
         use crate::i18n::{Lang, tr, trc};
+        // The wording lives in the craft-i18n catalogs; without them the interface is English.
+        if !crate::i18n::catalogs_embedded() {
+            return;
+        }
         let (pl, de) = (Lang::from_pref("pl"), Lang::from_pref("de"));
         assert_eq!(trc(pl, "file", "Home"), "Strona główna");
         assert_eq!(tr(pl, "Home"), "Start", "the ribbon tab keeps its word");
