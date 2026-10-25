@@ -26,7 +26,7 @@ static LOAD_ERRORS: RwLock<Vec<(String, PathBuf, String)>> = RwLock::new(Vec::ne
 /// Remember (or, for `Ok`, forget) why the dictionary `key` found at `dic` failed to load, and
 /// hand the result back unchanged.
 pub fn note_load<T>(key: &str, dic: &Path, result: Result<T, String>) -> Result<T, String> {
-    let mut errors = LOAD_ERRORS.write().unwrap_or_else(|e| e.into_inner());
+    let mut errors = LOAD_ERRORS.write().unwrap_or_else(std::sync::PoisonError::into_inner);
     errors.retain(|(k, _, _)| k != key);
     if let Err(e) = &result {
         errors.push((key.to_string(), dic.to_path_buf(), e.clone()));
@@ -36,24 +36,24 @@ pub fn note_load<T>(key: &str, dic: &Path, result: Result<T, String>) -> Result<
 
 /// Forget the load error of the dictionary `key` (none found, or it is about to be searched for again).
 pub fn clear_load_error(key: &str) {
-    LOAD_ERRORS.write().unwrap_or_else(|e| e.into_inner()).retain(|(k, _, _)| k != key);
+    LOAD_ERRORS.write().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|(k, _, _)| k != key);
 }
 
 /// The `.dic` file and the reason of the last failed load of the dictionary `key`, if any.
 pub fn load_error(key: &str) -> Option<(PathBuf, String)> {
-    LOAD_ERRORS.read().unwrap_or_else(|e| e.into_inner()).iter().find(|(k, _, _)| k == key).map(|(_, p, e)| (p.clone(), e.clone()))
+    LOAD_ERRORS.read().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(k, _, _)| k == key).map(|(_, p, e)| (p.clone(), e.clone()))
 }
 
 /// Search `dir` before the system locations (a "dictionaries folder" setting); `None` clears it.
 /// Takes effect for dictionaries not loaded yet.
 pub fn set_dictionary_dir(dir: Option<PathBuf>) {
-    *EXTRA_DIR.write().unwrap_or_else(|e| e.into_inner()) = dir;
-    LOAD_ERRORS.write().unwrap_or_else(|e| e.into_inner()).clear(); // they belong to the old search path
+    *EXTRA_DIR.write().unwrap_or_else(std::sync::PoisonError::into_inner) = dir;
+    LOAD_ERRORS.write().unwrap_or_else(std::sync::PoisonError::into_inner).clear(); // they belong to the old search path
 }
 
 /// WordCraft's search: its own folder setting, `WORDCRAFT_DICTIONARIES` and `WordCraft` folders.
 fn search() -> craft_proof::hunspell::Search {
-    let extra_dir = EXTRA_DIR.read().unwrap_or_else(|e| e.into_inner()).clone();
+    let extra_dir = EXTRA_DIR.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
     craft_proof::hunspell::Search { extra_dir, ..craft_proof::hunspell::Search::for_app("WordCraft") }
 }
 
